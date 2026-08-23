@@ -32,8 +32,8 @@ Two rules that follow from that table, and that no integration may break:
 An integration cannot be started from nothing — these come from the Streamlike account manager or
 the back office at `https://bo.streamlike.com`:
 
-- a **company account**, created by Streamlike (there is no self-service signup and no shared demo
-  account),
+- a **company account**, created by Mediatech/Streamlike (there is no self-service signup and
+  no shared demo account),
 - the **`company_id`**, the account identifier used by most webservices,
 - **API access enabled** on the account, then a **permanent API key** created in the back office
   (avatar menu → API keys). The key is shown once,
@@ -85,7 +85,7 @@ inside the reference files — is given from the root of the skill folder.
 | File | Contents |
 | --- | --- |
 | `references/webservices.md` | The 15 `/ws/*` endpoints, parameters, response shapes, paging, error behaviour |
-| `references/api.md` | REST API: authentication, conventions, `fields`/`range`/`sorts`, errors, multipart, endpoint map |
+| `references/api.md` | REST API: authentication, conventions, `fields`/`range`/`sorts`, errors, multipart, audio tracks, endpoint map |
 | `references/player-embed.md` | Player URLs, the full parameter table, `postMessage` control, keyboard shortcuts, oEmbed |
 | `references/js-sdk.md` | `js-streamlike-sdk`: install, functions, playlist player, when it is the right tool |
 | `references/playback.md` | HLS/CMAF delivery, multiple audio tracks, subtitles, native players, offline pitfalls |

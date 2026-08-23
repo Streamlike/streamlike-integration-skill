@@ -148,6 +148,56 @@ index. Order `source[plop]` before `source[360]` when both are present.
 Large sources can also be dropped on the account's FTP watchfolder and pulled in with
 `POST /medias/{media_ids}/actions/retrieve` — steadier than a long HTTP upload over a poor link.
 
+## Audio tracks and video replacement
+
+API 5.31 and later, on medias produced by the current encoding pipeline. `GET
+/medias/{media_id}/audio-tracks` says whether a media is one of them, and what it carries:
+
+```json
+{"encoding_v2": true,
+ "audio": [{"language": "fr", "kind": "audio", "label": "Français", "default": true},
+           {"language": "en", "kind": "audio", "label": "English", "default": false}],
+ "audio_default": "fr", "manageable": true, "promotable": false}
+```
+
+`manageable` false means the media predates the pipeline: read its tracks, do not try to write
+them. `promotable` true means the opposite corner — a single-track media that can join per-track
+management (see below).
+
+`{language_id}` is a **track token**, not just a language code: `en` for the regular track, `en-ad`
+for its audio description (API 5.33 and later). The suffix is what types the track; there is no
+separate field. Subtitles follow the same convention, `fr-cc` for closed captions.
+
+| Call | Effect |
+| --- | --- |
+| `POST …/audio-tracks/{language_id}` | Adds the track, or replaces it when the language already exists |
+| `PATCH …/audio-tracks/{language_id}` | Renames it (`label`) or makes it the default (`default`) |
+| `DELETE …/audio-tracks/{language_id}` | Removes it |
+| `POST …/audio-tracks/{language_id}/promote` | Declares the language of a single-track media's audio (API 5.36) |
+| `POST /medias/{media_id}/video/replace` | New video, every audio track and subtitle kept |
+
+The content of a track is `track[file]` (multipart) or `track[url]` for the platform to fetch;
+`video[file]` / `video[url]` likewise. `label` and `default` are optional.
+
+Two of these do less work than they look like. `promote` re-extracts the audio the media already
+publishes under a proper language name — the video is never re-encoded. `video/replace` swaps the
+picture alone, and refuses a source whose duration diverges from the published one by more than
+`max(2 s, 5 %)`.
+
+Writes are asynchronous and exclusive: while one runs, the media answers `409
+ENCODING_V2_JOB_ACTIVE` and `source.encoding_operation_running` is true on `GET
+/medias/{media_id}`. Poll that field rather than retrying blind.
+
+Reading the same thing from the catalog side:
+
+- `GET /medias/{media_id}` returns `source.audio_tracks`, the published tracks with their
+  `language`, `kind`, `label` and `default`. **Single media only** — it costs a manifest read, so
+  it is not served in listings (API 5.37 and later),
+- `source.is_multiple_audio` is a boolean on every video and audio media, listings included, and
+  `GET /medias?source.is_multiple_audio=1` filters on it,
+- mass re-encoding refuses these medias (`INVALID_MEDIA_IS_MULTIPLE_AUDIO`): their tracks are
+  managed one by one through the endpoints above.
+
 ## Endpoint map
 
 160+ paths, grouped by tag. Explore with `scripts/openapi_lookup.py list --tag <name>`.
@@ -181,7 +231,9 @@ Large sources can also be dropped on the account's FTP watchfolder and pulled in
 | Reorder a playlist | `POST /organization/playlists/{playlist_id}/order` |
 | Grant a viewer access to a protected media | `POST /medias/{media_id}/token` |
 | Add subtitles or chapters | `POST /medias/{media_id}/subtitles/{language_id}`, `…/chapters/{language_id}` |
-| Follow an encoding | `GET /pipelines`, `GET /jobs/{job_id}/log` |
+| Follow an encoding | `GET /pipelines`, and `GET /medias?encoded=1` to know what is playable |
+| Add an audio track | `POST /medias/{media_id}/audio-tracks/{language_id}` |
+| Replace the video, keeping the tracks | `POST /medias/{media_id}/video/replace` |
 | Read audience | `GET /analytics/playback/{from}/{to}`, `GET /analytics/engagement/{media_id}/connections/{from}/{to}` |
 
 ## SDKs

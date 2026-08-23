@@ -77,9 +77,11 @@ A media carrying several audio languages is flagged `metadata.global.is_multiple
 - in a native player, the tracks are in the HLS master as `EXT-X-MEDIA:TYPE=AUDIO` entries with
   their `LANGUAGE` — select by language code, not by index; the order is not a contract,
 - server side, `GET /medias/{media_id}/audio-tracks` lists the declared tracks and the API can add,
-  replace, or promote them. Those endpoints, and the `multiple_audio` filter, belong to recent
-  releases: check `scripts/openapi_lookup.py show …` against the published description before
-  relying on them.
+  replace, rename or promote them — see `references/api.md`. `GET /medias/{media_id}` also returns
+  `source.audio_tracks` for a read-only view, on a single media only,
+- those endpoints need API 5.31 (5.37 for `source.audio_tracks`) and the `multiple_audio` filter
+  webservices 5.20. Check `scripts/openapi_lookup.py show …` against the published description
+  before relying on them: an older server answers `404`, or accepts the filter and ignores it.
 
 ## Subtitles and transcripts
 

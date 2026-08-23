@@ -185,5 +185,5 @@ Save as an `.html` file and open it — no build step, no account needed:
 ## What you cannot try here
 
 The REST API needs an account and a key, so nothing in `references/api.md` is exercised above.
-`vote` and `manifest` need a whitelisted server IP. Ask Streamlike for an account, then repeat the
+`vote` and `manifest` need a whitelisted server IP. Ask Mediatech/Streamlike for an account, then repeat the
 calls with your own identifiers — the shapes are the same.

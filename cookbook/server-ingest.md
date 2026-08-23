@@ -33,11 +33,12 @@ scripts/openapi_lookup.py show /medias --method post
 Encoding is asynchronous. A freshly created media is not playable, and its manifest does not exist
 yet.
 
-- `GET /pipelines` lists the pipelines and their jobs, `GET /jobs/{job_id}/log` returns a job log,
+- `GET /pipelines` lists the pipelines and their jobs, with their state and their error when one failed (the job *log* itself is staff-only and answers `403`),
 - `GET /medias?encoded=1` — and `encoded=1` on `/ws/playlist` — filter on medias whose encoding
   finished. Poll that rather than guessing a delay,
 - `POST /jobs/{job_id}/restart` re-runs a failed job, `POST /medias/{media_ids}/actions/reencode`
-  re-encodes from the source.
+  re-encodes from the source — but not a multi-track media, which answers
+  `INVALID_MEDIA_IS_MULTIPLE_AUDIO`: its tracks are managed one by one.
 
 Front ends should never show a media that is still encoding: filter on `encoded`, or keep the media
 `offline` until you have seen it finish.
@@ -51,6 +52,7 @@ Front ends should never show a media that is still encoding: filter on `encoded`
 | Chapters | `POST /medias/{media_id}/chapters/{language_id}` |
 | Interactions (clickable overlays) | `POST /medias/{media_id}/interactions/{language_id}` |
 | Audio tracks | `POST /medias/{media_id}/audio-tracks/{language_id}`, `…/promote` for a single-track media |
+| Replace the video, keeping the tracks | `POST /medias/{media_id}/video/replace` |
 | Cover from a frame | `POST /medias/{media_id}/cover/screenshot` |
 | Tags, keywords, playlists | `POST /medias/{media_ids}/actions/organization/{tag\|keyword\|playlist}` |
 | Custom fields | Templates under `/medias/customfields`, values in the media payload |
@@ -76,7 +78,8 @@ States are `online`, `offline` and `archived`. Bulk changes go through
 - **retries**: a `5xx` deserves a retry with backoff; a `400` never does — read
   `data.errors` and fix the payload,
 - **conflicts**: `409` means an operation is already running on that media (a re-encode, an audio
-  track update). Wait and retry,
+  track update). Wait and retry — `source.encoding_operation_running` on `GET /medias/{media_id}`
+  tells you when it is over, which beats retrying on a timer,
 - **idempotency**: `permalink` is a good deduplication key for a pipeline that may run twice — but
   it is unique platform-wide, not per account, and deleted medias still hold theirs. A generic
   slug can come back as `INVALID_PERMALINK` even though nothing in your catalog uses it; prefix

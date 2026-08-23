@@ -18,6 +18,7 @@ references/           One file per surface — webservices, API, player, JS SDK,
 cookbook/             End-to-end recipes: mobile feed app, WebTV, server-side ingest
 scripts/              fetch-openapi.sh, openapi_lookup.py — query a 2.5 MB API description
                       without reading it whole
+CHANGELOG.md          What moved between versions
 ```
 
 ## Using it
@@ -49,7 +50,7 @@ scripts/openapi_lookup.py show /medias/{media_id}/audio-tracks
 ## Before you start building
 
 An integration needs a Streamlike account, its `company_id`, API access enabled, an API key, and —
-for a few webservices — your server's IP whitelisted. Accounts are opened by Streamlike; there is
+for a few webservices — your server's IP whitelisted. Accounts are opened by Mediatech/Streamlike; there is
 no self-service signup. Ask your account manager. `SKILL.md` lists exactly what to request.
 
 ## Keeping it current
@@ -57,6 +58,14 @@ no self-service signup. Ask your account manager. `SKILL.md` lists exactly what 
 The OpenAPI descriptions are fetched live, so endpoint details never go stale. The prose does:
 re-check the player parameter table and the platform changelogs after a release. Both changelogs
 are in the descriptions themselves, under `info.description`.
+
+## Versions
+
+`VERSION` holds the version of this skill, `CHANGELOG.md` says what moved between them, and every
+release is tagged `v<version>` here on GitHub.
+
+The same content ships as a Gemini gem, built from the same files and published under the same
+number: [streamlike-integration-gem](https://github.com/Streamlike/streamlike-integration-gem).
 
 ## Official resources
 
