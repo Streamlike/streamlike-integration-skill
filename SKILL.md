@@ -84,13 +84,13 @@ inside the reference files — is given from the root of the skill folder.
 
 | File | Contents |
 | --- | --- |
-| `references/webservices.md` | The 15 `/ws/*` endpoints, parameters, response shapes, paging, error behaviour |
-| `references/api.md` | REST API: authentication, conventions, `fields`/`range`/`sorts`, errors, multipart, audio tracks, endpoint map |
+| `references/webservices.md` | The 15 `/ws/*` endpoints, parameters, response shapes and absence rules, paging, XML, error behaviour |
+| `references/api.md` | REST API: authentication, conventions, `fields`/`range`/`sorts`, errors, responses that surprise, multipart, audio tracks, encoding version, endpoint map |
 | `references/player-embed.md` | Player URLs, the full parameter table, `postMessage` control, keyboard shortcuts, oEmbed |
 | `references/js-sdk.md` | `js-streamlike-sdk`: install, functions, playlist player, when it is the right tool |
-| `references/playback.md` | HLS/CMAF delivery, multiple audio tracks, subtitles, native players, offline pitfalls |
+| `references/playback.md` | HLS/CMAF delivery, multiple audio tracks, subtitles, waveform peaks, native players, offline pitfalls |
 | `references/security.md` | Token-protected medias, IP/referrer restrictions, passwords, domains to whitelist |
-| `references/analytics.md` | Playback counting, engagement, `user_token`, resume, ratings, API analytics |
+| `references/analytics.md` | Playback counting, engagement, `user_token`, resume, ratings, reading the API reports |
 | `references/feeds.md` | mRSS, podcast, Google video sitemap, QR codes, SCORM, short URLs |
 
 Working calls against Streamlike's public demonstration catalog — copy, run, compare with what your
@@ -135,6 +135,11 @@ office.
   `scripts/openapi_lookup.py`, or in the reference files here, or fetch the media once and read the
   JSON. The webservices answer `404` with an HTML error page for an unknown parameter value, so a
   typo does not announce itself,
+- **an empty value is an absent key, on both surfaces.** Neither the API nor the webservices send
+  `null` or `0` to say "nothing here" — the key is simply gone, and a container left empty goes with
+  it. So read defensively everywhere: guard before walking into an object, test presence before
+  comparing a value, and never write a branch that only fires on `null`. The handful of endpoints
+  that break the rule and *do* send nulls are called out where they appear,
 - prefer `permalink` over `media_id` in URLs the end user sees, and `pid` over long parameter
   strings in embed URLs,
 - when the integration is a public front end, assume the catalog is not entirely playable: some

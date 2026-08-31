@@ -40,6 +40,44 @@ curl -s "https://cdn.streamlike.com/ws/media?media_id=9dd61d7f5e077fdb" \
   | jq '.media.metadata.customization.cover'
 ```
 
+## See the absence rule for yourself
+
+An empty value is a missing key, so the field list differs from one media to the next. List what
+this one actually carries:
+
+```bash
+curl -s "https://cdn.streamlike.com/ws/media?media_id=9dd61d7f5e077fdb" \
+  | jq -c '.media.metadata.global | keys'
+```
+
+```json
+["creation_date","duration","fps","has_password","has_sound","is_360","is_downloadable",
+ "is_multiple_audio","is_secured","is_tokenized","lastplayback_date","lastupdated_date",
+ "lastupdatedfile_date","media_id","name","permalink","ratio","release_date","status","type"]
+```
+
+No `description`, no `credits`, no `transcript` — those are absent, not empty. Same story one level
+up: this media carries no subtitles and no keywords, so neither key exists.
+
+```bash
+curl -s "https://cdn.streamlike.com/ws/media?media_id=9dd61d7f5e077fdb" \
+  | jq -c '{subtitles: (.media.metadata.subtitles != null),
+            keywords:  (.media.metadata.keywords  != null),
+            cover:     (.media.metadata.customization.cover != null)}'
+# {"subtitles":false,"keywords":false,"cover":true}
+```
+
+`jq` is forgiving about that — `.media.metadata.subtitles | length` quietly answers `0`. JavaScript
+is not: `media.metadata.subtitles.length` throws on this very media. Test the container, not the
+count.
+
+Listings are the exception — they keep their key when they match nothing:
+
+```bash
+curl -s "https://cdn.streamlike.com/ws/related?media_id=9dd61d7f5e077fdb" | jq -c .
+# {"medias":[]}   ← this media has no keywords, so nothing is related to it
+```
+
 ## Walk a playlist
 
 ```bash
@@ -56,6 +94,12 @@ curl -s "https://cdn.streamlike.com/ws/playlist?playlist_id=7e0b55bbd4bd0a91&pag
 
 # search inside titles, descriptions and spoken words
 curl -s "https://cdn.streamlike.com/ws/playlist?playlist_id=7e0b55bbd4bd0a91&query=live&search_fields%5B%5D=name&search_fields%5B%5D=transcription" | jq .
+
+# the matching excerpts, on the medias that matched
+curl -s "https://cdn.streamlike.com/ws/playlist?playlist_id=7e0b55bbd4bd0a91&query=live&pagesize=1" \
+  | jq -c '.playlist.medias[0].media.metadata.highlight | keys'
+# ["description.stemmed","keywords.name","keywords.name.keyword","keywords.name.stemmed",
+#  "name","name.stemmed","permalink","permalink.stemmed"]
 
 # two playlists at once — repeat the parameter
 curl -s "https://cdn.streamlike.com/ws/playlist?playlist_id%5B%5D=7e0b55bbd4bd0a91&playlist_id%5B%5D=5236a84e5723dca3&pagesize=3" | jq '.playlist.metadata.size'
@@ -78,16 +122,39 @@ curl -s -o /dev/null -w "%{http_code} %{content_type}\n" \
 # 404 text/html   ← `desc` is not a valid value; `down` is
 ```
 
+And a call whose answer depends on the version of the server — search results in XML:
+
+```bash
+curl -s "https://cdn.streamlike.com/ws/playlist?playlist_id=7e0b55bbd4bd0a91&query=live&f=xml&pagesize=1" \
+  | xmllint --noout -
+```
+
+From webservices 5.26 it parses: every excerpt is wrapped in a `<value>`. Against an older server
+it fails, and it fails as a whole document rather than in the highlight block alone.
+
+```
+parser error : StartTag: invalid element name
+…<highlight><keywords.name.keyword><0><![CDATA[<em>live</em>]]></0>…
+```
+
+Run it against the server you actually call before relying on XML with a `query`: the fix ships
+with the webservices, and a given platform may not carry it yet.
+
 ## Related medias, live viewers
 
 ```bash
 curl -s "https://cdn.streamlike.com/ws/related?media_id=9dd61d7f5e077fdb&pagesize=3" \
   | jq '[.medias[].media.metadata.global.name]'
 
-curl -s "https://cdn.streamlike.com/ws/nowplaying?media_id=9dd61d7f5e077fdb" | jq .
+curl -s "https://cdn.streamlike.com/ws/nowplaying?media_id=9dd61d7f5e077fdb" | jq -c .
+# {"nowplaying":{"count":0}}   ← distinct viewers of the last two minutes, fixed window
+
+curl -s "https://cdn.streamlike.com/ws/resume?media_id=9dd61d7f5e077fdb&user_token=never-seen" | jq -c .
+# {"resume":{"timecode":0}}    ← 0 is also what a real viewer at the start gets
 ```
 
-`related` matches on keywords: it comes back empty on catalogs where nobody filled them in.
+`related` matches on keywords: it comes back empty on catalogs where nobody filled them in, and it
+never returns a live nor a media that is not encoded.
 
 ## A media with several audio tracks
 
@@ -154,8 +221,25 @@ curl -s "https://cdn.streamlike.com/ws/media?media_id=9dd61d7f5e077fdb" \
 curl -s "https://cdn.streamlike.com/ws/rss?playlist_id=7e0b55bbd4bd0a91&pagesize=3"
 curl -s "https://cdn.streamlike.com/ws/videositemap?playlist_id=7e0b55bbd4bd0a91" | head -40
 curl -s "https://cdn.streamlike.com/ws/qr?media_id=9dd61d7f5e077fdb&size=6&level=M"
-# <img src="http://cfcdn.streamlike.com/qr/….png" alt=""/>
+# <img src="https://cfcdn.streamlike.com/qr/….png" alt=""/>   ← https from webservices 5.26
 ```
+
+The `<enclosure>` of an mRSS or podcast item carries a **duration**, not a byte size. Compare the
+two calls on the same media and you get the same number:
+
+```bash
+curl -s "https://cdn.streamlike.com/ws/rss?playlist_id=7e0b55bbd4bd0a91&pagesize=1" \
+  | grep -o '<enclosure[^>]*>'
+# <enclosure url="https://www.streamlike.tv/media.php?p=oui-on-a-le-choix"
+#            length="294" type="video/mp4"/>
+
+curl -s "https://cdn.streamlike.com/ws/media?permalink=oui-on-a-le-choix" \
+  | jq -c '.media.metadata.global | {name, duration}'
+# {"name":"Indépendance Tech : Oui, on a le choix!","duration":294}
+```
+
+Note the enclosure `url` too: it is the WebTV page, not a media file, despite
+`type="video/mp4"`.
 
 ## The JS SDK, end to end
 

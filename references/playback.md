@@ -79,6 +79,10 @@ A media carrying several audio languages is flagged `metadata.global.is_multiple
 - server side, `GET /medias/{media_id}/audio-tracks` lists the declared tracks and the API can add,
   replace, rename or promote them — see `references/api.md`. `GET /medias/{media_id}` also returns
   `source.audio_tracks` for a read-only view, on a single media only,
+- per-track management needs a media produced by the current encoding pipeline. To know which
+  medias those are without a call each, read `source.encoding_version` over a listing (API 5.46) —
+  `2` is the current pipeline, `1` the legacy one, and an **absent** field means the media publishes
+  nothing yet. `references/api.md` spells out why that absence matters,
 - those endpoints need API 5.31 (5.37 for `source.audio_tracks`) and the `multiple_audio` filter
   webservices 5.20. Check `scripts/openapi_lookup.py show …` against the published description
   before relying on them: an older server answers `404`, or accepts the filter and ignores it.
@@ -97,6 +101,28 @@ A media carrying several audio languages is flagged `metadata.global.is_multiple
   `subtitle=fr-cc` its closed-caption variant, `subtitle=0` disables them,
 - tracks produced by speech-to-text also expose a word-level file, which is what
   `generateWords()` from the JS SDK renders as a live transcript.
+
+## Waveform peaks
+
+An encoded audio media publishes a peaks sidecar next to its other assets — the amplitude
+silhouette the player's waveform skin draws (`references/player-embed.md`). It is plain public
+JSON you can consume for your own rendering:
+
+```json
+{"version": 1, "count": 2000, "peaks": [0, 4, 18, 63, …]}
+```
+
+- amplitudes are integers `0..100` spread over the whole duration; `count` mirrors `peaks.length` —
+  2000 buckets, fewer only when the source holds fewer samples,
+- `GET /medias/{media_id}` returns the sidecar URL as `peaks.files.index` (API 5.44, encoded audio
+  medias only). The file lives on the media's asset tree, under `…/medias/{media_id}/peaks/peaks.json`,
+- a multi-track media publishes one sidecar per track, named by track token (`peaks/en.json`,
+  `peaks/en-ad.json`) beside the default `peaks.json`; on medias produced by the current encoding
+  pipeline, the file index also lists an `audio` array whose entries each carry their `peaks_url`,
+- on a token-protected media the player fetches the sidecar through a tokenized URL, exactly as it
+  does for the storyboard mosaic,
+- an audio media encoded before the feature has no sidecar: expect a `404` and skip the drawing —
+  that is what the player does. Re-encoding the media produces one.
 
 ## Live and Streamout
 

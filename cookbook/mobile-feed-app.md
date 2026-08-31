@@ -61,16 +61,16 @@ app.get('/feed', async (req, res) => {
   if (!response.ok) throw new Error(`ws/playlist ${response.status}`);   // 404 = HTML error page
 
   const { playlist } = await response.json();
-  const items = playlist.medias
+  const items = (playlist.medias ?? [])                                  // absent when nothing matched
     .map(({ media }) => media)
     .filter((m) => !dismissed.includes(m.metadata.global.media_id))      // large lists: filter here
     .filter((m) => !m.metadata.global.is_tokenized || m.metadata.global.has_password)
     .map((m) => ({
       id: m.metadata.global.media_id,
-      title: m.metadata.global.name,
+      title: m.metadata.global.name,                                     // absent on an untitled media
       duration: m.metadata.global.duration,
-      ratio: m.metadata.global.ratio,
-      cover: m.metadata.customization.cover.thumbnaillarge_url,
+      ratio: m.metadata.global.ratio,                                    // absent while not encoded
+      cover: m.metadata.customization?.cover?.thumbnaillarge_url,        // absent without a cover
       liked: false,   // filled from your own store
     }));
 
@@ -78,11 +78,16 @@ app.get('/feed', async (req, res) => {
 });
 ```
 
-Three details that bite:
+Four details that bite:
 
 - **`page` is an offset.** Advance it by `pagesize`, not by one,
 - **check the status.** An unknown parameter value, an unknown playlist or a missing IP
   authorization all answer `404` with an HTML page, not a JSON error,
+- **an empty value is an absent key.** Note the `??` and the `?.` above: a search that matched
+  nothing has no `medias` key at all — read `metadata.size`, which is always there — and a media
+  with no cover has no `customization.cover` object to reach into. A feed built on a curated
+  playlist works for months, then crashes on the first media somebody published without a poster.
+  Give every card a placeholder rather than trusting the block,
 - **`not_media_ids[]` lives in the URL**, and the service is GET-only. Past a few dozen ids, filter
   in your backend and ask for a slightly larger page to compensate.
 
@@ -138,6 +143,12 @@ deduplication to you — check your own store before calling, or one enthusiasti
 average on their own. The aggregate comes back in `/ws/media` as `statistics.rating_hits` and
 `rating_totalvalue`.
 
+Two things about the answer. **The accepted range is 0 to 5** from webservices 5.26, `0` being the
+worst grade — so a "dislike" sent as `0` is stored, where an older server rejected it. And
+rejection is quiet: the body is `{"vote":{"res":false}}` with a **200**, which covers both an
+out-of-range value and a write that failed on our side. Read `res` before you tell the user
+anything.
+
 If a like is only ever a personal signal, skip `vote` entirely.
 
 ## 4. Dismiss
@@ -164,6 +175,12 @@ https://cdn.streamlike.com/ws/resume?media_id=MEDIA_ID&user_token=USER_TOKEN
 Use it to open a card where the viewer left it, or to skip what they already finished. The token is
 pseudonymous data about a person: use an internal id, never an email.
 
+Read what it gives you carefully. `timecode` is **always present** and `0` means three different
+things — the token was never seen, the last view is more than a month old, or the viewer really is
+at the start. And the value is **the furthest second reached during the last session**, not where
+playback stopped: someone who jumped to the end and came back resumes at the end. In a swipe feed
+that is an unpleasant surprise, so offer "resume" as a choice rather than seeking on open.
+
 ## 6. Prefetch without wasting data
 
 - fetch the next page when the viewer is two or three cards from the end — the same rule the JS
@@ -178,6 +195,7 @@ pseudonymous data about a person: use an internal id, never an email.
 
 - [ ] The `company_id` and the API key exist only on the backend,
 - [ ] every webservice call checks the HTTP status before parsing,
+- [ ] every field read off a media is guarded — an empty value is an absent key, covers included,
 - [ ] the feed advances by `pagesize`, and stops on `metadata.size`,
 - [ ] off-screen players are paused,
 - [ ] restricted medias are filtered or handled (`is_tokenized`, `has_password`, `is_secured`),

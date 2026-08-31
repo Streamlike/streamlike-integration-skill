@@ -69,8 +69,11 @@ privacy notice.
 
 ## Ratings
 
-`/ws/vote?company_id=…&media_id=…&value=0..5` stores a rating. `/ws/media` returns
-`statistics.rating_hits` and `statistics.rating_totalvalue`; the average is their quotient.
+`/ws/vote?company_id=…&media_id=…&value=0..5` stores a rating — **0 to 5**, `0` the worst and `5`
+the best, from webservices 5.26; before that `0` was rejected, quietly, with a `200` carrying
+`res: false`. A value outside the range still is. `/ws/media` returns
+`statistics.rating_hits` and `statistics.rating_totalvalue`; the average is their quotient, and
+`rating_hits` is `0` on a media nobody rated, so guard the division.
 
 The service requires a whitelisted IP that cannot be waived, and the platform explicitly leaves
 vote deduplication and abuse prevention to you: keep a "this user already voted" record in your own
@@ -97,9 +100,65 @@ The API exposes the same numbers as the console, all on a `{from}/{to}` date ran
 | `GET /analytics/medias/{from}/{to}` | Per-media table |
 | `GET /analytics/userstats/{media_id}/{user_token}/{from}/{to}` | One viewer on one media |
 | `GET /analytics/transfer`, `/storage`, `/encoding`, `/greenhousegas` `/{from}/{to}` | Consumption, including CO₂e |
+| `GET /analytics/catalogs/{from}/{to}` | Catalog duration held, as a daily snapshot |
+| `GET /analytics/company/billable` | Consumption since the start of the contractual term, against the allowance |
 
 `/ws/media` also carries a cheap playback counter (`statistics.media_access`) if all you need is
 "how many views" next to a thumbnail.
+
+### Four habits of these reports
+
+They all answer the same way, and each of these breaks code written against a normal JSON API.
+
+**An empty report is the JSON array `[]`, not an object.** When nothing matched the period there is
+no `data` key to reach into, and no empty `data` either — the whole body is `[]`. So
+`response.data[companyId]` throws instead of returning nothing. Test the body first:
+
+```js
+const body = await res.json();
+const rows = Array.isArray(body) ? {} : body.data;   // [] means "nothing matched"
+```
+
+Two endpoints are exempt and always answer a `data`: `/analytics/company/logins/{from}/{to}` and
+`/analytics/userstats/{media_id}/{user_token}/{from}/{to}`.
+
+**The keys are the values.** A report is an object keyed by encrypted company id, then by date,
+then by country code, browser name or storage kind. Where the published description writes
+`data.{company_id}.{date}.{mode}`, the braces mark a level whose key you *read*, not a field name
+you look up. Iterate; never index by a name you decided in advance.
+
+**Absent means none.** Nothing is sent as `null` or as `0` when there is nothing to say — the key
+is simply not there. A day nobody watched has no date key, a country nobody played from has no
+country key. Two consequences: the series have holes, so **lay down your own calendar before
+plotting one**, and a test written as `if (count === 0)` never fires, because there is no `count`
+to compare.
+
+**`aggregation` changes the shape, not just the grouping.** It replaces the per-company level with
+the literal key `__all__`, and on several reports it also removes a level: `aggregation=total` on
+encoding, storage, transfer and greenhouse gas puts the figure directly under the date, where the
+detailed answer has one entry per kind. The same reading code cannot serve both modes, and the
+`companies` metadata block is never sent alongside an aggregated report.
+
+### Three figures that are not what they look like
+
+- **`data.transfer` in `GET /analytics/company/billable` is a running total.** Each week already
+  contains every week before it, and the last entry is your consumption to date. One week alone is
+  the difference between two consecutive entries — **summing them counts the same bytes many times
+  over.** In the same response, `greenhousegas` is the one series that really is per week and may
+  be added up,
+- **catalog and storage figures are snapshots**, not amounts added that day. What you grew over a
+  week is the difference between its two ends, never a sum,
+- **the engagement ratios of `/analytics/userstats/…` are fractions, not percentages.** `0.0377`
+  means 3.77 percent. They are rounded to four decimals, and `viewing_ratio` goes above `1` when a
+  viewer replays. In the CSV form the column is headed `percentage`, but the values in it are the
+  same unscaled fractions.
+
+### CSV is not `text/csv`
+
+Wherever `format=csv` is offered — the analytics reports and `/streamouts/{streamout_id}/medialist`
+alike — the body comes back as **`application/vnd.ms-excel`**, never `text/csv`, whatever the file
+extension says. Branch on the parameter you sent, not on the content type. The CSV form also drops
+the `companies` metadata block that the JSON form carries.
 
 ## Third-party tracking
 
