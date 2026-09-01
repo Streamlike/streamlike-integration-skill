@@ -126,8 +126,10 @@ JSON you can consume for your own rendering:
 
 ## Live and Streamout
 
-- a **live** channel plays through the same player with `live_id=STREAM_NAME`; `live_dvr=1` enables
-  the DVR window,
+- a **live** channel plays through the same player with `live_id=STREAM_NAME`; `live_dvr=1` shows
+  the DVR controls — but the rewind window itself exists only if the live was created with
+  `live[dvr]=true`. The API default is `false` since API 5.51, so the embed parameter alone does
+  not give viewers a DVR,
 - a **Streamout** is a scheduled broadcast — a playlist played on a timetable — embedded with
   `str_id=STREAMOUT_ID`. Several player parameters do not apply to it (the table in
   `references/player-embed.md` has a column for this),

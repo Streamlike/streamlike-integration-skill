@@ -154,7 +154,7 @@ Streamout (scheduled broadcast).
 | `interaction` | language code / bool | Forces the language or disables the display of interactions. E.g. interaction=fr or interaction=0 | 1 | no | no |
 | `interface` | bool | Disables all interface elements (buttons, controls, panel, etc.) | 1 | yes | no |
 | `landing` | bool | Shows the clickable cover image and a logo in place of the player. The player is loaded after clicking the image. | 0 | no | no |
-| `live_dvr` | bool | Enables DVR mode during a live | 1 | yes | no |
+| `live_dvr` | bool | Shows the DVR controls during a live. The rewind window exists only if the live was created with live[dvr]=true (API default: false since API 5.51) | 1 | yes | no |
 | `live_id` | string | Identifier of the live or "stream name" | - | yes | no |
 | `logo` | bool | Whether to show the logo | 1 | yes | yes |
 | `logo_alpha` | 0-100 | Overrides the transparency setting, only if the logo is defined from a logo_url parameter | 100 | yes | yes |

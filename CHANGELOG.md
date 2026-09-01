@@ -7,6 +7,25 @@ patch for corrections that change nothing you would have written differently.
 The same version is published to both distributions — the Claude skill and the Gemini gem — from
 the same source.
 
+## 3.0.0 — 2026-09-01
+
+**A live is now created with the DVR off** (API 5.51). `POST /lives` used to store
+`live[dvr]=true` when the field was omitted, while its description already said the default was
+`false`. The behaviour now matches the words: omit the field and the live runs without a rewind
+window.
+
+If your integration creates lives and your viewers pause and rewind them, **send
+`live[dvr]=true` at creation** — or set it afterwards with `PATCH /lives/{media_id}`, while the
+live is not running. An integration that already sends the field, whichever value, is
+unaffected. Existing lives keep the value they have stored, and `live.dvr`, returned on every
+live response, tells you where each one stands.
+
+The `live_dvr` player parameter is not a substitute: it shows or hides the DVR controls, but the
+rewind window only exists when the live runs with the DVR enabled. `references/playback.md` and
+the parameter table in `references/player-embed.md` now say so. Relying on the old default was
+relying on an accident rather than a contract, but it is a behaviour change on a public
+endpoint, hence the major digit.
+
 ## 2.5.0 — 2026-08-31
 
 Encoding complexity comes back to the API, and it now does something. Nothing written against
