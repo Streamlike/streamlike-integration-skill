@@ -84,11 +84,18 @@ Responses wrap the payload:
 
 ```json
 {"data": [ … ], "total_count": 1240, "returned_count": 50,
- "returned_first_index": 0, "returned_last_index": 49, "degraded": false}
+ "returned_first_index": 0, "returned_last_index": 49}
 ```
 
 `200` means the whole set is in the response, `206` means it is a slice — page on `total_count`,
 not on an empty page.
+
+**`degraded` appears only when it is true.** The platform never sends `"degraded": false`, so
+testing for that value tests for something you will never receive — test the key's presence. It
+means the full-text backend was unavailable and the answer was built **without applying your
+`search`**: the other criteria still hold, but the term did not filter anything. So the set comes
+back wider than you asked, not shorter. Treat it as "my search was ignored" and run it again later,
+never as "these are the matches".
 
 ## Status codes and errors
 
@@ -99,7 +106,7 @@ not on an empty page.
 | `204` | Succeeded, nothing to return (deletions) |
 | `206` | Partial content, a slice of the collection |
 | `400` | Invalid or missing values, details in the body |
-| `401` | No or invalid token |
+| `401` | No or invalid token — or a write during a maintenance window (`API_OFFLINE`), see below |
 | `403` | Authenticated, but not allowed on this resource |
 | `404` | Unknown resource or endpoint — **also returned when you may not see it** |
 | `409` | Conflict, e.g. an encoding operation already running on that media |
@@ -119,6 +126,35 @@ One restriction worth knowing before you build around it: **deleting a live is n
 customer accounts.** `DELETE /lives/{media_id}` requires a platform-scope role, and the bulk
 delete refuses a live too, with `MANDATORY_ROLE`. Stopping a live is yours
 (`POST /lives/{media_id}/stop`); removing it afterwards goes through Streamlike support.
+
+## Maintenance windows
+
+Streamlike closes the platform for planned maintenance, announced in advance. Since API 5.52 a
+window no longer stops everything:
+
+- **reads keep answering.** `GET`, `HEAD` and `OPTIONS` stay reachable, along with the
+  authentication endpoints and `POST /medias/{media_id}/token` — so playback of token-protected
+  medias is never interrupted,
+- **writes answer `401` with `API_OFFLINE`**, and write nothing. `POST`, `PATCH` and `DELETE` are
+  refused for the length of the window,
+- **`GET /tools/shorturl` is refused as well.** It answers to `GET`, but it mints the short link and
+  its QR code, so it closes with the writes,
+- **the webservices (`/ws/*`) are not concerned at all.** A front end that reads its catalog through
+  them never notices a window.
+
+Before 5.52 every endpoint answered `401 API_OFFLINE` for the whole window, reads included.
+
+**This is the one `401` worth retrying.** Tell them apart on the message, never on the status:
+`API_OFFLINE` means come back later and your key is fine, while any other `401` means the
+credentials are the problem and retrying with the same key will never work. Code that reads `401`
+as "my key died" will wake somebody up at every maintenance window, and code that retries every
+`401` will hammer the platform with a dead key.
+
+**A listing read during a window can be short, and nothing in the answer says so.** Reindexing runs
+during maintenance, so a collection may return fewer items than it holds — with a `200`, a
+consistent `total_count`, and no flag of any kind (`degraded` answers a different question, see
+above). Never reconcile a local store against a listing you read during a window: what stopped
+appearing has not been deleted. Read it again once the window is closed.
 
 ## Four responses that are not the shape you expect
 

@@ -77,6 +77,11 @@ States are `online`, `offline` and `archived`. Bulk changes go through
 
 - **retries**: a `5xx` deserves a retry with backoff; a `400` never does — read
   `data.errors` and fix the payload,
+- **maintenance windows**: an ingest pipeline is all writes, so a planned window stops it whole.
+  Every call here answers `401` with `API_OFFLINE` and writes nothing — hold the queue and drain it
+  when the window closes, rather than failing the batch. Reads keep working throughout, so a
+  polling loop watching `source.encoding_operation_running` carries on. Match on `API_OFFLINE`:
+  it is the only `401` that a retry ever fixes,
 - **conflicts**: `409` means an operation is already running on that media (a re-encode, an audio
   track update). Wait and retry — `source.encoding_operation_running` on `GET /medias/{media_id}`
   tells you when it is over, which beats retrying on a timer,

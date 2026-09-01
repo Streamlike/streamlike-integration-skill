@@ -7,6 +7,38 @@ patch for corrections that change nothing you would have written differently.
 The same version is published to both distributions — the Claude skill and the Gemini gem — from
 the same source.
 
+## 3.1.0 — 2026-09-01
+
+**Reads now answer during a planned maintenance window** (API 5.52). Streamlike closes the
+platform for announced maintenance; until this version every endpoint answered `401` with
+`API_OFFLINE` for the length of the window, reads included. Reads stay open now, so an
+application that only lists or displays a catalogue no longer stops when we do.
+
+Writes are unchanged: `POST`, `PATCH` and `DELETE` still answer `401 API_OFFLINE` and write
+nothing. `GET /tools/shorturl` answers to `GET` but mints the short link, so it closes with the
+writes. The webservices (`/ws/*`) were never concerned and still are not.
+
+Two rules worth putting in your code, both in `references/api.md`:
+
+- **`API_OFFLINE` is the one `401` worth retrying**, and it is told apart on the message, never on
+  the status. Any other `401` means the credentials are the problem, and retrying with the same key
+  will never fix it,
+- **a listing read during a window can be short, and nothing in the answer says so.** Reindexing
+  runs during maintenance, so a collection may return fewer items than it holds, with a `200` and a
+  consistent `total_count`. Never reconcile a local store against a listing read during a window:
+  what stopped appearing has not been deleted.
+
+`cookbook/server-ingest.md` says what an ingest pipeline should do with a window — hold the queue,
+drain it once it closes — and `references/feeds.md` flags the short-url call. Nothing written
+against 3.0.0 breaks: the platform only opens what was closed, so code that treats every `401` as
+fatal still works, it is merely more cautious than it needs to be.
+
+Corrected in passing, and unrelated to windows: the collection wrapper example showed
+`"degraded": false`. The platform never sends that — the key appears **only when it is true**, so
+testing for `false` tests for something you will never receive. `degraded` means the full-text
+backend was unavailable and your `search` was not applied, so the answer comes back **wider** than
+you asked, not shorter.
+
 ## 3.0.0 — 2026-09-01
 
 **A live is now created with the DVR off** (API 5.51). `POST /lives` used to store
