@@ -7,6 +7,48 @@ patch for corrections that change nothing you would have written differently.
 The same version is published to both distributions — the Claude skill and the Gemini gem — from
 the same source.
 
+## 4.0.0 — 2026-09-04
+
+**Breaking: `data.catalog.{date}.duration_total` in `GET /analytics/company/billable` is no longer
+seconds** (API 5.54). It is now hours of weighted catalogue, rounded to two decimals — the unit
+`catalog_limit` has always used, so the two finally compare without conversion. Before this, the
+response carried the consumption in seconds beside the allowance in weighted hours, and any code
+that compared them was silently wrong. Nothing was renamed, so the break is invisible until the
+numbers are read: a chart of it drops by three orders of magnitude without raising anything.
+
+The eleven raw durations in the same entry stay in seconds — they are the terms the weighting is
+computed from, which is why `duration_total` is deliberately neither their sum nor in their unit.
+`GET /analytics/catalogs/{from}/{to}` is untouched: its own `duration_total` is still seconds, so
+that key now means one thing in one report and another in the other. `references/analytics.md` has
+the arithmetic, the weighting, and the comparison written out.
+
+**`aggregation=subtotal` is not offered by every analytics report, and the skill never said so.**
+Fifteen reports take an `aggregation` parameter; all fifteen accept `total`, but only four accept
+`subtotal` — `playback`, `storage`, `transfer` and `greenhousegas`. The other eleven answer `400`
+`INVALID_AGGREGATION`. Only the main `playback` report takes it, not the narrower playback
+breakdowns beside it, which is the easy mistake. This was wrong in the skill before API 5.54, not
+because of it; API 5.53 is what made it checkable, by having each endpoint's published description
+of `aggregation` name only the roll-ups it actually offers.
+
+**`401` and `403` are now declared on every authenticated operation** (API 5.53) — 250 of 251, the
+exception being `POST /authent/token/unique`. Runtime behaviour is unchanged; what changes is that a
+client generated from the OpenAPI file now has branches for them, where one generated from an older
+copy had none. The maintenance-window rule is unaffected: the `401` a `GET` declares is the
+credentials one, and reads still answer during a window.
+
+This release also carries the 3.1.1 corrections below, which were never published on their own.
+
+## 3.1.1 — 2026-09-04
+
+**A live without the DVR still rewinds about 100 seconds.** 3.0.0 said that the rewind window
+"only exists when the live runs with the DVR enabled"; that overstated it. The player exposes
+whatever the HLS playlist holds, and a live keeps about 100 seconds of segments behind the live
+edge whatever its `dvr` value. The DVR extends that window to about 45 minutes; it does not
+create it. `references/playback.md` and `references/player-embed.md` now give both figures.
+
+The same pass corrects the `live_dvr` player parameter: it is accepted for compatibility, but
+the current player does not read it. Nothing to change in an integration, hence the patch digit.
+
 ## 3.1.0 — 2026-09-01
 
 **Reads now answer during a planned maintenance window** (API 5.52). Streamlike closes the

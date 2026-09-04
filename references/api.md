@@ -122,6 +122,14 @@ Validation errors come back as machine-readable codes:
 Each endpoint documents its own error codes; `scripts/openapi_lookup.py errors /medias` lists them.
 Match on the code, never on the message text.
 
+**Since API 5.53 the published description declares `401` and `403` on every operation that needs
+authentication** — 250 of the 251, the exception being `POST /authent/token/unique`, which is what
+issues a token in the first place. Nothing changed at runtime: both answers were always possible,
+they were simply missing from the description, so a client generated from an older copy of the
+OpenAPI file has no branch for either. Regenerate yours and handle both — a generator that only
+emits the declared responses was, until then, producing clients that treated an expired token as an
+unexpected error.
+
 One restriction worth knowing before you build around it: **deleting a live is not open to
 customer accounts.** `DELETE /lives/{media_id}` requires a platform-scope role, and the bulk
 delete refuses a live too, with `MANDATORY_ROLE`. Stopping a live is yours
@@ -143,6 +151,10 @@ window no longer stops everything:
   them never notices a window.
 
 Before 5.52 every endpoint answered `401 API_OFFLINE` for the whole window, reads included.
+
+Reads declare a `401` of their own since 5.53, and it is the credentials one, not this one: a `GET`
+still answers during a window. Do not read that declaration as "reads can be refused for
+maintenance".
 
 **This is the one `401` worth retrying.** Tell them apart on the message, never on the status:
 `API_OFFLINE` means come back later and your key is fine, while any other `401` means the

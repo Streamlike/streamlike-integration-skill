@@ -106,6 +106,41 @@ The API exposes the same numbers as the console, all on a `{from}/{to}` date ran
 `/ws/media` also carries a cheap playback counter (`statistics.media_access`) if all you need is
 "how many views" next to a thumbnail.
 
+### Breaking in API 5.54: `duration_total` in `/analytics/company/billable` changed unit
+
+**If you read `data.catalog.{date}.duration_total`, your figures change the day API 5.54 reaches
+production.** It used to be raw seconds. It is now **hours of weighted catalogue**, rounded to two
+decimals. Nothing was renamed and nothing moved: the same key answers a different unit. Code that
+plots it drops by three orders of magnitude without raising anything, and code that divides it by
+3600 to get hours is now wrong twice over.
+
+Why it changed: `catalog_limit`, at the root of the same response, has always been stated in hours
+of weighted catalogue — that is the unit contracts are written in. `duration_total` was the figure
+you were meant to measure against it, in seconds. One response, two units, and the comparison
+everybody actually wanted was silently wrong. They are now the same unit and compare as they are:
+
+```js
+const week  = body.data.catalog['2026-08-31'];
+const used  = week.duration_total;      // hours of weighted catalogue, e.g. 412.75
+const cap   = body.catalog_limit;       // same unit, e.g. 500
+const ratio = cap ? used / cap : null;  // catalog_limit is absent when there is no cap
+```
+
+The old value divided by 3600 is *not* the new one, only its order of magnitude: the weighting
+discounts part of the catalogue. Online and offline **video** counts in full, archived video for a
+fifth, **audio** for a tenth, archived audio for a fiftieth.
+
+**The eleven raw durations beside it stay in seconds.** `duration_online`, `duration_offline`,
+`duration_archived`, `video_duration_total`, `audio_duration_total` and the six
+`{video,audio}_duration_{online,offline,archived}` are unchanged — they are the terms the weighting
+is computed *from*. So `duration_total` is deliberately **neither their sum nor in their unit**, and
+one `catalog` entry now carries two units on purpose. Do not add it to them, and do not rescale them
+to match it.
+
+**`GET /analytics/catalogs/{from}/{to}` is not affected.** Its own `duration_total` is still raw
+seconds. The same key name means seconds in that report and weighted hours in `billable`: only the
+billing one was aligned on the contractual unit.
+
 ### Four habits of these reports
 
 They all answer the same way, and each of these breaks code written against a normal JSON API.
@@ -138,6 +173,30 @@ the literal key `__all__`, and on several reports it also removes a level: `aggr
 encoding, storage, transfer and greenhouse gas puts the figure directly under the date, where the
 detailed answer has one entry per kind. The same reading code cannot serve both modes, and the
 `companies` metadata block is never sent alongside an aggregated report.
+
+**And `subtotal` is not offered everywhere.** Fifteen reports take an `aggregation` parameter at
+all, and all fifteen accept `total`. Only **four** also accept `subtotal`, the roll-up that keeps
+one line per company:
+
+| Report | `total` | `subtotal` |
+| --- | --- | --- |
+| `GET /analytics/playback/{from}/{to}` | yes | yes |
+| `GET /analytics/storage/{from}/{to}` | yes | yes |
+| `GET /analytics/transfer/{from}/{to}` | yes | yes |
+| `GET /analytics/greenhousegas/{from}/{to}` | yes | yes |
+| the eleven others | yes | **no** |
+
+The eleven that refuse it are `catalogs`, `encoding`, `engagement/{media_id}/qualities`, the three
+`playback/client/*`, the three `playback/location/*`, `playback/players` and `playback/referers`.
+Asking one of them for `subtotal` answers `400` with `INVALID_AGGREGATION`. Note that only the main
+`playback` report takes it — the narrower playback breakdowns beside it do not.
+
+Every other analytics endpoint — `viewership`, `medias`, `tokenstats`, the two `top/*`,
+`userstats`, `live/streams`, `engagement/{media_id}/connections` and the `company/*` reports — has
+no `aggregation` parameter at all.
+
+Since API 5.53 the published description of `aggregation` lists only the roll-ups the endpoint it
+sits on actually offers, so it is worth reading per endpoint rather than assumed.
 
 ### Three figures that are not what they look like
 
