@@ -7,6 +7,25 @@ patch for corrections that change nothing you would have written differently.
 The same version is published to both distributions — the Claude skill and the Gemini gem — from
 the same source.
 
+## 4.1.0 — 2026-09-04
+
+**A streamout owned by another company can no longer be edited or deleted** (API 5.55). A token
+holding `STREAMOUT_ALL` used to read *and* write every company's streamouts; the second barrier
+the medias have always had was simply missing from the controller. `POST`, `PATCH` and `DELETE`
+on `/streamouts/{streamout_id}` now answer `404` when the streamout is not yours, the same way
+the equivalent call on a media always has. Reading is untouched, and so is `POST /streamouts`: a
+streamout is born in its creator's company and no field exposes the company. If you built a tool
+that edits streamouts across companies on an `_ALL` token, it stops working with this release;
+nothing else does.
+
+**Streamout payloads gain `company.id` and `company.name`.** They are what lets a client tell the
+streamouts it may write from the ones it may only read, before it sends the write. Medias have
+carried the same pair all along. Both role descriptions were also fixed in the published spec:
+`STREAMOUT_ALL` and `MEDIA_ALL` promised "edit/view all", and neither has ever granted the edit
+outside its own company.
+
+`references/api.md` states the rule where the status codes are explained.
+
 ## 4.0.0 — 2026-09-04
 
 **Breaking: `data.catalog.{date}.duration_total` in `GET /analytics/company/billable` is no longer

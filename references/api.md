@@ -130,6 +130,14 @@ OpenAPI file has no branch for either. Regenerate yours and handle both — a ge
 emits the declared responses was, until then, producing clients that treated an expired token as an
 unexpected error.
 
+**A resource you can read is not always a resource you can write.** The roles whose name ends
+in `_ALL` — `MEDIA_ALL`, `STREAMOUT_ALL` — open the reading of every company's objects, not the
+writing. An edit or a delete on an object owned by another company answers `404`, not `403`: the
+resource stops existing for you the moment you try to change it. Since API 5.55 this holds for
+streamouts too, where the second barrier had been missing and the write went through. Media and
+streamout payloads both carry `company.id` and `company.name`, so a client can tell its own
+objects from the ones it may only read, before it sends the write rather than after the refusal.
+
 One restriction worth knowing before you build around it: **deleting a live is not open to
 customer accounts.** `DELETE /lives/{media_id}` requires a platform-scope role, and the bulk
 delete refuses a live too, with `MANDATORY_ROLE`. Stopping a live is yours
