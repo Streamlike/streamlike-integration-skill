@@ -150,7 +150,7 @@ Streamout (scheduled broadcast).
 | `fullscreen` | bool | Enables or disables switching to fullscreen | 1 | yes | yes |
 | `icons_position` | right left none | Places the panel icons on the right or left, or fully disables the display of panels and icons | right | yes | no |
 | `infos` | bool | Shows the title/description/credits block. Setting "nometa" to 1 disables this option | 0 | yes | no |
-| `inline_throttling` | integer | Requires the Theo player. Limits the quality of videos available in standard playback but not in fullscreen, by specifying a maximum bitrate (in Kbps) | - | yes | yes |
+| `inline_throttling` | integer | Limits the quality of videos available in standard playback but not in fullscreen, by specifying a maximum bitrate (in Kbps). Both engines honour it | - | yes | yes |
 | `interaction` | language code / bool | Forces the language or disables the display of interactions. E.g. interaction=fr or interaction=0 | 1 | no | no |
 | `interface` | bool | Disables all interface elements (buttons, controls, panel, etc.) | 1 | yes | no |
 | `landing` | bool | Shows the clickable cover image and a logo in place of the player. The player is loaded after clicking the image. | 0 | no | no |
@@ -175,7 +175,7 @@ Streamout (scheduled broadcast).
 | `pid` | encrypted pid | Encrypted ID of the player settings to apply to the media | company default | yes | yes |
 | `play_button` | bool | Shows or hides the central "play" button. | 1 | yes | no |
 | `playback_speed` | bool | Shows the button to change the media playback speed | 0 | no | no |
-| `player` | theo, hlsjs | Forces the player type | hlsjs | yes | yes |
+| `player` | theo, hlsjs | Forces the playback engine. Ignored in three cases, where only one engine can do the job: a live always plays on `theo` (a streamout whose schedule holds a live too), `background_audio=1` always plays on `hlsjs`, and a quality-capped media (`throttling`, `inline_throttling`, `max_width`, `max_height`) always plays on `hlsjs` in Safari for macOS. Without this parameter, Safari (macOS, iOS, iPadOS) gets `theo` and other browsers get the player settings' value, `hlsjs` by default. `videojs` is accepted as an alias of `hlsjs` | hlsjs | yes | yes |
 | `preload` | bool | Preloads the media | 0 | no | no |
 | `prevent_click` | bool | Blocks clicking on the player | 0 | yes | no |
 | `related` | bool or view_id | Shows a grid of media that share keywords and belong to the same view | 0 | no | no |
@@ -208,10 +208,12 @@ Streamout (scheduled broadcast).
 - **Autoplay**: browsers only allow it muted. `autostart=1&muted=1` is the working pair; the viewer
   unmutes,
 - **Bandwidth**: `max_width` / `max_height` cap the renditions offered, `inline_throttling` caps
-  the bitrate outside fullscreen (Theo player only), and the strictest rule wins. Useful on mobile
-  data or a constrained corporate network,
+  the bitrate outside fullscreen, and the strictest rule wins, on both engines. Useful on mobile
+  data or a constrained corporate network. In Safari for macOS a capped media is served by `hlsjs`
+  whatever `player` says: that is the only engine able to honour a cap there,
 - **`background_audio=1`** drops to the lowest quality when the video is playing but not visible.
-  It is meant for audio-first usage, not for saving bandwidth on a visible player,
+  It is meant for audio-first usage, not for saving bandwidth on a visible player. It always runs
+  on `hlsjs`, whatever `player` says,
 - **Chrome**: `interface=0` removes every control for a decorative background video;
   `controls=0`, `play_button=0`, `logo=0`, `icons_position=none` remove pieces one by one,
 - **Accessibility**: `audio_lng=en` forces an audio track, `audio_lng=en-ad` its audio

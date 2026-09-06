@@ -238,6 +238,13 @@ Fields worth knowing:
 - `subtitles[].subtitle.url` is **an object, not a string**: one URL per format (`dfxp`, `vtt`,
   `srt`, `m3u8`, and `words` for word-level timings). `chapters[].chapter.url`, sitting right next
   to it, **is** a plain string. The asymmetry is real and long-standing,
+- the `words` file is a JSON object `{"source", "language", "words": [...]}`, each word carrying
+  `word`, `start` and `end` (seconds), `mark` (its trailing punctuation, `""` when none) and
+  `source` — `asr` when the speech engine timed it, `estimated` when it was interpolated after the
+  subtitles were corrected. The file-level `source` is `asr`, `aligned` (corrected subtitles,
+  untouched words still engine-timed) or `estimated` (no engine timing at all, e.g. an imported
+  SRT). Files written before September 2026 are a bare list of `{word, start, end, punctuation}`:
+  accept both shapes, the platform still serves the old one until the media is touched again,
 - `subtitles[].subtitle.language_id` is not always a bare language code: a suffix types the track,
   and `fr-cc` means closed captions in French as opposed to plain `fr` subtitles. Do not truncate it
   to two letters, or the two become one,

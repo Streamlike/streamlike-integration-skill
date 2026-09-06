@@ -7,6 +7,27 @@ patch for corrections that change nothing you would have written differently.
 The same version is published to both distributions — the Claude skill and the Gemini gem — from
 the same source.
 
+## 4.2.0 — 2026-09-06
+
+**`inline_throttling` no longer requires the Theo engine.** The reference said so for years; both
+engines have honoured it since the 2026 player rewrite, and in Safari for macOS
+`hlsjs` is even the only one that can. If you forced `player=theo` to get a bitrate cap, drop
+that: it was never needed on the current player, and on Safari for macOS it is now overridden.
+
+**The `player` parameter documents where it is ignored.** Three capability rules win over it: a
+live always plays on `theo` (a streamout whose schedule holds a live too), `background_audio=1`
+always plays on `hlsjs`, and a quality-capped media always plays on `hlsjs` in Safari for macOS.
+Without the parameter, Safari gets `theo` and other browsers follow the player settings, `hlsjs`
+by default. Nothing changed in the platform here; the rules were simply undocumented.
+
+**The `words` file of a subtitle track now follows the subtitles.** It used to be written once
+by the automatic transcription and to vanish at the first correction of the track; it is now
+rebuilt at every write of the track, and every track has one — closed captions and imported
+files included. Its shape changes from a bare list to an object saying where the timings come
+from (`source`: `asr`, `aligned` or `estimated`, at the file level and on each word) and carrying
+the punctuation mark of each word (`mark`). Readers should accept both shapes for a while: a media
+nobody touched since still serves the old list. `references/webservices.md` describes the object.
+
 ## 4.1.0 — 2026-09-04
 
 **A streamout owned by another company can no longer be edited or deleted** (API 5.55). A token

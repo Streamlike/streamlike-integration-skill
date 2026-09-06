@@ -186,8 +186,8 @@ that is an unpleasant surprise, so offer "resume" as a choice rather than seekin
 - fetch the next page when the viewer is two or three cards from the end — the same rule the JS
   SDK's playlist player applies,
 - preload covers (`customization.cover.thumbnaillarge_url`), not videos,
-- on mobile data, cap the renditions with `max_height=720` (or `inline_throttling` on the Theo
-  player) rather than letting a phone pull a 1080p ladder in a feed,
+- on mobile data, cap the renditions with `max_height=720` (or `inline_throttling`) rather than
+  letting a phone pull a 1080p ladder in a feed,
 - `metadata.size` is the size of the whole playlist: use it for the end-of-feed state instead of
   probing for an empty page.
 
