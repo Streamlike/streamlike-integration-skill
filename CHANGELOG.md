@@ -7,6 +7,26 @@ patch for corrections that change nothing you would have written differently.
 The same version is published to both distributions — the Claude skill and the Gemini gem — from
 the same source.
 
+## 4.3.0 — 2026-09-07
+
+**An API key can be restricted to a few roles** (API 5.57). Until now every key held every right
+of the user who created it — the key written into an integration that only lists a catalogue could
+also delete it. A key of type `api` may now carry its own list of roles: `roles[]` on
+`POST /me/keys` and `PATCH /me/keys/{id}`, role names without the `ROLE_` prefix, validated
+against what the caller holds (`INVALID_ROLES` otherwise), replaced whole on every write. Two
+read-only fields join every key response, `restricted` and `roles`; `roles` is absent on a key
+without a list *and* on an empty list, so read `restricted` first. `GET /me` called with a
+restricted key answers the effective roles of the key — the intersection of its list and what the
+account holds at that moment — which is the call to make to know what a key can do. Existing keys
+are untouched and answer `restricted: false`; `ftp` keys do not take the field. In the back
+office, the same list is the "Key rights" block of an `api` key.
+
+The security advice moves with it: **give each integration its own key, restricted to the roles it
+needs, with an expiration** — `MEDIA_COMPANY_VIEW` for a catalogue feed. A dedicated user account
+is now the second answer, for when the grantable roles are not narrow enough. `SKILL.md`,
+`references/api.md`, `references/security.md` and the mobile feed recipe said the opposite, and
+were rewritten; the recipe gains the two calls that create such a key and read back what it can do.
+
 ## 4.2.0 — 2026-09-06
 
 **`inline_throttling` no longer requires the Theo engine.** The reference said so for years; both

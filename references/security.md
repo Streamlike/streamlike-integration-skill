@@ -79,9 +79,22 @@ wildcarded at all, and `manifest` requires whitelisting.
 **`company_id` is a secret.** It addresses your entire catalog through the webservices. Keep it
 server side; a front end should call your backend, which calls the webservices.
 
-**API keys** carry the rights of the user who created them. Store them like database passwords,
-never in a mobile bundle or front-end bundle, rotate through `/me/keys`, and give integrations
-their own dedicated user account so revoking one does not lock out a person.
+**API keys** act as the user who created them. Store them like database passwords, never in a
+mobile bundle or front-end bundle, and rotate through `/me/keys`. Then narrow the blast radius of
+a leak, in this order:
+
+- **give each integration its own key, restricted to the roles it needs, with an expiration.** A
+  key of type `api` can carry a list of roles narrower than its user (API 5.57): `MEDIA_COMPANY_VIEW`
+  for a catalogue feed, `MEDIA_COMPANY_EDIT` and `MEDIA_PUBLISHER` for an ingest pipeline. A key
+  that leaks then leaks a read, not the account, and revoking it stops one integration and nothing
+  else. `references/api.md` shows the call and how to check what a key can do,
+- **a dedicated user account for integrations**, when the roles you can grant are not narrow
+  enough — a key never exceeds its user, so a user with the right roles is what bounds them — and
+  so that revoking a key never locks out a person.
+
+Existing keys are untouched by 5.57: they still carry every right of their user, and answer
+`restricted: false`. Re-create the ones written into integrations with a list, and delete the old
+ones.
 
 ## Domains and addresses to allow through a firewall
 

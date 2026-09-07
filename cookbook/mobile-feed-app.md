@@ -28,8 +28,15 @@ the single design decision this feature turns on — everything else follows.
    └──► player iframe or HLS stream, straight from the CDN
 ```
 
-The app never holds the `company_id` and never holds an API key: both address the whole account.
-Your backend does, and it is also where per-user state lives.
+The app never holds the `company_id` and never holds an API key: the first addresses the whole
+catalog, the second everything the key may do on the account. Your backend does, and it is also
+where per-user state lives.
+
+A feed that only reads needs no API key at all — the webservices are the read path. The moment
+your backend does call the API (a playback token for a protected media, the editorial removal of
+step 4), give it a key of its own, restricted to those roles and nothing more (API 5.57), rather
+than a key that carries the whole account. `references/api.md` shows the call; step 4 shows the
+check.
 
 Streams and player pages, on the other hand, are fetched directly by the device — proxying video
 through your servers would cost you the bandwidth the CDN is there to absorb.
@@ -163,6 +170,29 @@ Store it, then apply it on the next fetch, as in step 1. Two variants worth know
 
 Do not confuse the two. A per-user dismissal that reaches the API changes the catalog for everybody.
 
+If the backend takes the hard path, its key should be able to do that and nothing else. Create it
+once, from a key or a session of an account that holds the roles, and read back what it can do:
+
+```bash
+# once, from an account that holds the roles: a key that edits and publishes, and expires
+curl -X POST "https://api.streamlike.com/me/keys" \
+     -H 'X-Streamlike-Authorization: streamlikeAuth token="YOUR_KEY"' \
+     -H "Content-Type: application/json" \
+     -d '{"type":"api","name":"feed backend","expiration":"2027-09-07T00:00:00Z",
+          "roles":["MEDIA_COMPANY_EDIT","MEDIA_PUBLISHER"]}'
+# 201 — "restricted": true, "roles": ["MEDIA_COMPANY_EDIT","MEDIA_PUBLISHER"], "token": the key, shown once
+
+# then, with the new key: what it can actually do — the intersection of its list and the account
+curl -G "https://api.streamlike.com/me" \
+     -H 'X-Streamlike-Authorization: streamlikeAuth token="THE_NEW_KEY"' \
+     --data-urlencode "fields[]=roles"
+# {"kind":"user","roles":["MEDIA_EDIT","MEDIA_COMPANY_EDIT","MEDIA_PUBLISHER"]}   (order not significant)
+```
+
+`MEDIA_COMPANY_EDIT` implies `MEDIA_EDIT`, which is why the second answer is longer than the list
+you sent. A feed that only reads needs neither call: keep the `company_id` on the backend and no
+key at all.
+
 ## 5. Resume, and continuity between sessions
 
 Pass a stable `user_token` per account everywhere (player URL, `eng.k` as `u`), then read the last
@@ -193,7 +223,8 @@ that is an unpleasant surprise, so offer "resume" as a choice rather than seekin
 
 ## Checklist before shipping
 
-- [ ] The `company_id` and the API key exist only on the backend,
+- [ ] The `company_id` and the API key exist only on the backend, and the key — if the backend
+      needs one at all — is restricted to the roles it uses, with an expiration,
 - [ ] every webservice call checks the HTTP status before parsing,
 - [ ] every field read off a media is guarded — an empty value is an absent key, covers included,
 - [ ] the feed advances by `pagesize`, and stops on `metadata.size`,

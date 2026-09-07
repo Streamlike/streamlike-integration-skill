@@ -7,16 +7,20 @@ https://api.streamlike.com/
 The write path and the administration path: create and edit medias, upload files, manage
 playlists, users, security, lives, streamouts, and read detailed analytics.
 
-**Server side only.** An API key carries every right of the user who created it. HTTPS only —
-plain HTTP answers `404`. Requests and responses are JSON, except file uploads (multipart).
+**Server side only.** An API key acts as the user who created it — with every right of that
+account, or with the narrower list of roles it was restricted to (API 5.57, see *Restricting a key
+to a few roles* below). HTTPS only — plain HTTP answers `404`. Requests and responses are JSON,
+except file uploads (multipart).
 
 ## Authentication
 
 Three ways in, in order of preference for an integration.
 
-**Permanent key (recommended).** Created in the back office: avatar menu → API keys, with an
-optional expiry date. The key is displayed once. It is bound to the user who created it and dies
-with that account.
+**Permanent key (recommended).** Created in the back office — avatar menu → API/FTP keys, with an
+optional expiry date and, on a key of type `api`, the "Key rights" block: every right ticked by
+default, and a box greyed out when another ticked right already implies it. Or created through
+`POST /me/keys`, below. The key is displayed once. It is bound to the user who created it, never
+exceeds that user's rights, and dies with that account.
 
 ```http
 GET /medias HTTP/1.1
@@ -39,7 +43,79 @@ Answers `200` with a token, or `400 INVALID_LOGIN_PASSWORD`.
 
 Store keys the way you store database passwords: environment or secret manager, never in a repo, a
 mobile bundle or front-end JavaScript. Rotate by creating a new key and deleting the old one
-through `/me/keys`.
+through `/me/keys` — and take the rotation as the moment to give each integration a key of its
+own, restricted to the roles it uses, with an expiration.
+
+### Restricting a key to a few roles
+
+API 5.57 and later. A key of type `api` may carry its own list of roles, narrower than the account
+that created it. Until then every key held every right of its user: the key written into an
+integration that only lists a catalogue could also delete it.
+
+`POST /me/keys` and `PATCH /me/keys/{id}` take `roles[]` — `roles`, a JSON array — of role names
+**without** the `ROLE_` prefix: the names `GET /me` returns in `roles`. `MEDIA_VIEW` is accepted,
+`ROLE_MEDIA_VIEW` is refused.
+
+```bash
+curl -X POST "https://api.streamlike.com/me/keys" \
+     -H 'X-Streamlike-Authorization: streamlikeAuth token="YOUR_KEY"' \
+     -H "Content-Type: application/json" \
+     -d '{"type":"api","name":"catalogue feed","expiration":"2027-09-07T00:00:00Z",
+          "roles":["MEDIA_COMPANY_VIEW"]}'
+```
+
+`201` returns the key, `token` included — shown once, like a key created in the back office — with
+`"restricted": true` and `"roles": ["MEDIA_COMPANY_VIEW"]`. Then check what it can do, with the new
+key itself:
+
+```bash
+curl -G "https://api.streamlike.com/me" \
+     -H 'X-Streamlike-Authorization: streamlikeAuth token="THE_NEW_KEY"' \
+     --data-urlencode "fields[]=roles"
+```
+
+```json
+{"kind": "user", "roles": ["MEDIA_VIEW", "MEDIA_COMPANY_VIEW"]}
+```
+
+`GET /me` called with a restricted key answers **the effective roles of the key**, not those of the
+account. It is the call to make when you want to know what a key can do, and it says more than the
+list you sent: `MEDIA_COMPANY_VIEW` implies `MEDIA_VIEW`, so the key holds both. The rules, in the
+order they bite:
+
+- **the list is validated against the caller.** A role the caller does not hold, a name that does
+  not exist, the `ROLE_` prefix, or anything that is not a list, answers `400 INVALID_FORM` with
+  `INVALID_ROLES`. A caller authenticated with a restricted key can only grant roles that key has:
+  a key cannot mint a wider one,
+- **the field exists on `api` keys only.** Sent on an `ftp` key, at creation or on edit, it answers
+  `400 INVALID_FORM` with `UNKNOWN_FIELDS` — the same answer an older server gives, since it does
+  not know the field,
+- **omit the field at creation for a key that carries every right of the account, now and later.**
+  That is what every key did before 5.57, and what an integration that does not send the field goes
+  on getting,
+- **send the whole list on every write: what you omit is revoked.** A `PATCH` with `roles`
+  replaces the list, it does not add to it. An empty list is accepted, and leaves a key that can
+  call `GET /me` and nothing else,
+- **a role that implies others grants them too**, and `USER` is always kept. The key's own `roles`
+  field carries the list as you sent it; the implied roles show up in `GET /me`,
+- **a restricted key never exceeds its user.** At every call its rights are the intersection of its
+  list and the rights its user holds *at that moment*: a role the account loses, the key loses too,
+  whatever its list says.
+
+Every key response — `GET /me/keys`, `GET /me/keys/{id}`, the `201` of the creation and the `200`
+of the edit — carries two **read-only** fields, both selectable with `fields[]`:
+
+| Field | Meaning |
+| --- | --- |
+| `restricted` | `true` when the key carries its own list, `false` when it carries every right of its user |
+| `roles` | That list. **Absent** both when the key has no list and when the list is empty — read `restricted` first |
+
+`restricted` is not a form field: posting a read-back key with it answers `400 INVALID_FORM` with
+`UNKNOWN_FIELDS`, so strip it before sending the object back, as with any read-only field.
+
+Existing keys are untouched: they carry every right of their user, as before, and answer
+`restricted: false` with no `roles` field. Nothing changed for `ftp` keys. Check the published
+description before relying on this: an older server refuses `roles` with `UNKNOWN_FIELDS`.
 
 ## Conventions
 
@@ -439,7 +515,7 @@ against the published description before relying on these: an older server does 
 | Tag | What lives there |
 | --- | --- |
 | `Authentication` | Session and single-use tokens |
-| `Me` | Current user, API keys, notifications, preferences |
+| `Me` | Current user, API keys and the roles they are restricted to, notifications, preferences |
 | `Medias` | Medias and lives: CRUD, attachments, subtitles, chapters, interactions, audio tracks, covers, SCORM, social push, playback tokens |
 | `Medias - Actions` | Bulk operations on a list of media ids: delete, duplicate, tag, keyword, playlist, visibility, security, re-encode, speech-to-text |
 | `Medias - Misc` | Creators, languages, custom field and custom action templates |
@@ -459,6 +535,7 @@ against the published description before relying on these: an older server does 
 
 | Goal | Call |
 | --- | --- |
+| Give an integration a key limited to what it does | `POST /me/keys` with `roles`, then `GET /me` with the new key |
 | Create a media with its file | `POST /medias` (multipart) |
 | Publish / unpublish | `PATCH /medias/{media_id}` with `visibility.state` = `online`, `offline`, `archived` |
 | Put medias in a playlist | `POST /medias/{media_ids}/actions/organization/playlist` |
