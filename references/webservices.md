@@ -113,7 +113,7 @@ which come back absolute in `https:`.
   encoder", not "true",
 - **there are no arrays.** A list of one and a list of ten differ only by their number of children,
   so an XML client must always iterate, never read a single node,
-- **a list entry with no name of its own is wrapped in `<value>`**, since webservices 5.26. Most
+- **a list entry with no name of its own is wrapped in `<value>`**, since webservices 5.20. Most
   lists name their entries and are unchanged: `country_ids` holds `<country_id>`, `subtitles` holds
   `<subtitle>`. Search excerpts and manifest renditions have no such name, and they used to be
   poured flat into the parent — which produced an unparsable document on `playlist` with a `query`,
@@ -142,11 +142,11 @@ repeating the parameter — `playlist_id[]=ID1&playlist_id[]=ID2` — and the re
 | `country` | Restrict to a country |
 | `encoded` | Keep only medias whose encoding is finished |
 | `multiple_audio` | `1` keeps only multi-track medias, `0` only single-track ones, absent does not filter. Webservices 5.20 and later — earlier servers accept it and ignore it |
-| `encoding_version` | `2` keeps only the medias published by encoding-v2, `1` only those published by the legacy encoder, absent does not filter. A media publishing nothing carries no version and is returned by neither value; an unknown value answers `404`. **Webservices 5.25 and later** |
+| `encoding_version` | `2` keeps only the medias published by encoding-v2, `1` only those published by the legacy encoder, absent does not filter. A media publishing nothing carries no version and is returned by neither value; an unknown value answers `404`. **Webservices 5.20 and later** |
 | `not_media_ids[]` | **Exclude specific medias** — repeat the parameter, one id per occurrence. `metadata.size` is corrected accordingly, so paging stays consistent |
 | `not_playlist_ids[]`, `not_view_ids[]` | Exclude whole playlists or views |
 | `not_languages[]`, `not_countries[]` | Exclusions by language or country |
-| `forceplaylist` | Keeps only the medias filed in at least one playlist, dropping those filed nowhere. Redundant with `playlist_id`, which already implies it. Accepts `true`/`false` or `1`/`0`. **Webservices 5.22 and later** — before that, `0` and `1` were read inverted |
+| `forceplaylist` | Keeps only the medias filed in at least one playlist, dropping those filed nowhere. Redundant with `playlist_id`, which already implies it. Accepts `true`/`false` or `1`/`0`. **Webservices 5.20 and later** — before that, `0` and `1` were read inverted |
 
 Response shape:
 
@@ -175,11 +175,11 @@ words wrapped in `<em>`. Two shapes live in it: a text field such as `name.stemm
 **a list of objects** with a `timecode` and a `text`. Read the keys as a map; do not hard-code
 them.
 
-**XML works with a `query` from webservices 5.26.** Each excerpt is wrapped in a `<value>`, so a
+**XML works with a `query` from webservices 5.20.** Each excerpt is wrapped in a `<value>`, so a
 text field gives a run of `<value>` strings and a matched subtitle gives one `<value>` per hit,
-holding its `timecode` and its `text` together. Before 5.26 the excerpts came out as `<0>`, `<1>`,
+holding its `timecode` and its `text` together. Before 5.20 the excerpts came out as `<0>`, `<1>`,
 which are not legal element names, and that broke **the whole document**, not just the highlight
-block. Against a server older than 5.26, ask for JSON when you pass a `query`.
+block. Against a server older than 5.20, ask for JSON when you pass a `query`.
 
 ## `media` — everything about one media
 
@@ -228,7 +228,7 @@ Fields worth knowing:
   play; see `references/security.md`,
 - `global.is_multiple_audio` marks medias carrying several audio tracks,
 - `global.encoding_version` says which encoder produced the files the media publishes: `2` for the
-  current pipeline, `1` for the legacy one (webservices 5.23 and later). See the warning below
+  current pipeline, `1` for the legacy one (webservices 5.20 and later). See the warning below
   before comparing it,
 - `statistics.media_access` is the playback counter, `rating_hits` / `rating_totalvalue` the
   ratings collected through `vote` (average = `rating_totalvalue / rating_hits`),
@@ -309,14 +309,14 @@ Two more details:
 - in XML (`f=xml`) it comes out as `<encoding_version>1</encoding_version>`. It is a **number**,
   unlike the flags sitting next to it — `is_360`, `is_multiple_audio`, `is_tokenized` are booleans
   rendered as `0` or `1`. Here, `1` means the legacy encoder, not "true",
-- **it is returned everywhere a media is, and `playlist` filters on it from webservices 5.25.**
+- **it is returned everywhere a media is, and `playlist` filters on it from webservices 5.20.**
   `media`, `playlist` and `related` serialize their medias identically, so `global.encoding_version`
   is in all three responses. `/ws/playlist?encoding_version=2` keeps the medias published by the
   current pipeline, `1` the legacy ones, and leaving it out does not filter — a media publishing
   nothing carries no version and is returned by neither value. An unknown value answers `404`,
   which is the webservice habit and differs from the API, whose filters drop what they do not
   recognise. `media` answers about one media you name and `related` returns encoded medias only, so
-  neither takes the parameter. The API filters on it too, from 5.48 (`references/api.md`).
+  neither takes the parameter. The API filters on it too, from 5.30 (`references/api.md`).
 
 ## `playlists`
 
@@ -392,7 +392,7 @@ holding a token reads that viewer's position: mint one per person and keep it un
 
 **`vote`** answers `{"vote":{"res":true}}` — a single boolean, no vote id, no updated average, no
 count. **The accepted range is 0 to 5**, `0` the worst grade and `5` the best. `value=0` was
-rejected before webservices 5.26, which contradicted the description of the parameter itself; it is
+rejected before webservices 5.20, which contradicted the description of the parameter itself; it is
 stored like any other grade now, and only a value below `0` or above `5` answers `res: false`.
 Rejection is quiet, because `res: false` covers both "the value was out of range" and "the write
 failed on our side", and both answer **200**. A `404` means something else entirely — a missing or
@@ -438,7 +438,7 @@ the legacy encoder and the current one. Read it defensively.
 const master = manifest.idevicev1.find(e => Number(e.globalbitrate) === 0);
 ```
 
-**The XML rendering changed in webservices 5.26**, and it is the one change of that release that
+**The XML rendering changed in webservices 5.20**, and it is the one change of that release that
 can break code you already wrote. Each rendition of a section is now its own `<value>`. Before,
 a section was a flat run of children — `globalbitrate` three times, `width` twice, entries not all
 carrying the same fields — and nothing paired a `url` with its bitrate except counting positions.

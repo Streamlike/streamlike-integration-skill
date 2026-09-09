@@ -7,9 +7,22 @@ patch for corrections that change nothing you would have written differently.
 The same version is published to both distributions — the Claude skill and the Gemini gem — from
 the same source.
 
+## 4.3.1 — 2026-09-09
+
+**Renumbering only. No endpoint, field, parameter or rule changed.** Everything the Streamlike
+v6 cycle added to the two public surfaces was released as one version each, rather than as the
+long run of intermediate versions this bundle used to cite: **API 5.30** and **webservices
+5.20**, both dated 11 September 2026. The intermediate numbers — API 5.31 to 5.57, webservices
+5.21 to 5.26 — never reached a server and are gone from the published changelogs.
+
+Every version reference in this bundle now points at 5.30 or 5.20. If you wrote a version check
+against one of the old numbers, it will never match: compare against 5.30 for the API and 5.20
+for the webservices. The entries below keep their own dates and their own wording, so the
+history of this bundle still reads in order; only the platform version each one names has moved.
+
 ## 4.3.0 — 2026-09-07
 
-**An API key can be restricted to a few roles** (API 5.57). Until now every key held every right
+**An API key can be restricted to a few roles** (API 5.30). Until now every key held every right
 of the user who created it — the key written into an integration that only lists a catalogue could
 also delete it. A key of type `api` may now carry its own list of roles: `roles[]` on
 `POST /me/keys` and `PATCH /me/keys/{id}`, role names without the `ROLE_` prefix, validated
@@ -50,7 +63,7 @@ nobody touched since still serves the old list. `references/webservices.md` desc
 
 ## 4.1.0 — 2026-09-04
 
-**A streamout owned by another company can no longer be edited or deleted** (API 5.55). A token
+**A streamout owned by another company can no longer be edited or deleted** (API 5.30). A token
 holding `STREAMOUT_ALL` used to read *and* write every company's streamouts; the second barrier
 the medias have always had was simply missing from the controller. `POST`, `PATCH` and `DELETE`
 on `/streamouts/{streamout_id}` now answer `404` when the streamout is not yours, the same way
@@ -70,7 +83,7 @@ outside its own company.
 ## 4.0.0 — 2026-09-04
 
 **Breaking: `data.catalog.{date}.duration_total` in `GET /analytics/company/billable` is no longer
-seconds** (API 5.54). It is now hours of weighted catalogue, rounded to two decimals — the unit
+seconds** (API 5.30). It is now hours of weighted catalogue, rounded to two decimals — the unit
 `catalog_limit` has always used, so the two finally compare without conversion. Before this, the
 response carried the consumption in seconds beside the allowance in weighted hours, and any code
 that compared them was silently wrong. Nothing was renamed, so the break is invisible until the
@@ -86,11 +99,11 @@ the arithmetic, the weighting, and the comparison written out.
 Fifteen reports take an `aggregation` parameter; all fifteen accept `total`, but only four accept
 `subtotal` — `playback`, `storage`, `transfer` and `greenhousegas`. The other eleven answer `400`
 `INVALID_AGGREGATION`. Only the main `playback` report takes it, not the narrower playback
-breakdowns beside it, which is the easy mistake. This was wrong in the skill before API 5.54, not
-because of it; API 5.53 is what made it checkable, by having each endpoint's published description
+breakdowns beside it, which is the easy mistake. This was wrong in the skill before API 5.30, and
+not because of it: 5.30 is what made it checkable, by having each endpoint's published description
 of `aggregation` name only the roll-ups it actually offers.
 
-**`401` and `403` are now declared on every authenticated operation** (API 5.53) — 250 of 251, the
+**`401` and `403` are now declared on every authenticated operation** (API 5.30) — 250 of 251, the
 exception being `POST /authent/token/unique`. Runtime behaviour is unchanged; what changes is that a
 client generated from the OpenAPI file now has branches for them, where one generated from an older
 copy had none. The maintenance-window rule is unaffected: the `401` a `GET` declares is the
@@ -111,7 +124,7 @@ the current player does not read it. Nothing to change in an integration, hence 
 
 ## 3.1.0 — 2026-09-01
 
-**Reads now answer during a planned maintenance window** (API 5.52). Streamlike closes the
+**Reads now answer during a planned maintenance window** (API 5.30). Streamlike closes the
 platform for announced maintenance; until this version every endpoint answered `401` with
 `API_OFFLINE` for the length of the window, reads included. Reads stay open now, so an
 application that only lists or displays a catalogue no longer stops when we do.
@@ -143,7 +156,7 @@ you asked, not shorter.
 
 ## 3.0.0 — 2026-09-01
 
-**A live is now created with the DVR off** (API 5.51). `POST /lives` used to store
+**A live is now created with the DVR off** (API 5.30). `POST /lives` used to store
 `live[dvr]=true` when the field was omitted, while its description already said the default was
 `false`. The behaviour now matches the words: omit the field and the live runs without a rewind
 window.
@@ -167,9 +180,9 @@ Encoding complexity comes back to the API, and it now does something. Nothing wr
 receive.
 
 - **`source[complexity]` is accepted again on `POST /medias` and `PATCH /medias/{media_id}`** (API
-  5.50). An integer from `1`, a slide deck or a screencast, to `5`, fast motion or fine grain, `3`
+  5.30). An integer from `1`, a slide deck or a screencast, to `5`, fast motion or fine grain, `3`
   by default. It tells the encoder how hard the picture is to compress and moves the bitrate it
-  aims for. Versions 5.31 to 5.49 dropped it because the encoder of the day ignored the value;
+  aims for. It had been dropped from the forms while the encoder of the day ignored the value;
   that encoder reads it now. Out of range answers `400 INVALID_FORM` with
   `INVALID_SOURCE_COMPLEXITY`. The field never stopped being *returned* as `source.complexity`,
 - **`POST /medias/{media_ids}/actions/complexity` accepts every video media again**, whichever
@@ -190,7 +203,7 @@ receive.
 ## 2.4.0 — 2026-08-26
 
 Three behaviours this bundle described as permanent were defects, and they are fixed (webservices
-5.26). A fourth correction is ours alone: a paragraph that told you not to cache something you can
+5.20). A fourth correction is ours alone: a paragraph that told you not to cache something you can
 cache. **Nothing written against 2.3.0 stops working** — the first three widen or repair what was
 there — with one exception, spelled out below, which only reaches readers who ignored our own
 advice.
@@ -219,7 +232,7 @@ advice.
   fresh code used to come back in `http` and be blocked as mixed content in a secure page. Nothing
   changed in the reuse itself — only the sentence that described it.
 
-**Everything above that changes behaviour ships with webservices 5.26, which is not deployed
+**Everything above that changes behaviour ships with webservices 5.20, which is not deployed
 everywhere yet** — the short-link reuse is the exception, it has always worked that way. The
 reference pages
 name the version each behaviour belongs to, and `examples.md` presents the XML search as a call
@@ -227,8 +240,8 @@ whose answer depends on the server you point it at.
 
 Two sentences written in 2.2.0 have also stopped being true, and both told you to do more work than
 you have to. **`encoding_version` is a filter now**, on both surfaces: `GET /medias?source.encoding_version=2`
-in the API (5.48, and the same parameter on `GET /lives` and `GET /analytics/medias/{from}/{to}`),
-`/ws/playlist?encoding_version=2` on the webservice side (5.25). `references/api.md` said the
+in the API (5.30, and the same parameter on `GET /lives` and `GET /analytics/medias/{from}/{to}`),
+`/ws/playlist?encoding_version=2` on the webservice side (5.20). `references/api.md` said the
 listing "cannot be restricted on it" and `references/webservices.md` said it was "a parameter
 nowhere"; both now describe the parameter. Sorting a catalog by pipeline client side is no longer
 the only way. A media that publishes nothing is returned by neither value, so asking for `1` and
@@ -236,8 +249,8 @@ the only way. A media that publishes nothing is returned by neither value, so as
 
 ## 2.3.0 — 2026-08-26
 
-Both public surfaces now describe what they **return**, not only what you send (API 5.47,
-webservices 5.24). No behaviour changed anywhere; what changed is what you can know before you
+Both public surfaces now describe what they **return**, not only what you send (API 5.30,
+webservices 5.20). No behaviour changed anywhere; what changed is what you can know before you
 write the code. This release carries over the part of it that makes an integration different.
 
 The rule that runs through everything, now stated once in `SKILL.md` and in full in
@@ -297,8 +310,8 @@ it.
 
 ## 2.2.0 — 2026-08-25
 
-A media now says which encoder produced the files it publishes, on both public surfaces (API 5.46,
-webservices 5.23):
+A media now says which encoder produced the files it publishes, on both public surfaces (API 5.30,
+webservices 5.20):
 
 - **`source.encoding_version`** in the API, **`metadata.global.encoding_version`** on the
   webservice side — in every media payload, so `media`, `playlist` and `related` all carry it. Same
@@ -316,7 +329,7 @@ webservices 5.23):
 - `is_multiple_audio` is unchanged on both sides — it has been there since the multitrack release
   and this version adds nothing to it.
 
-Catching up on API 5.45, released without a skill update:
+Catching up on API 5.30, released without a skill update:
 
 - **`waveform_cover_count`** on `GET /companies/preferences`: how many audio medias of the account
   carry a cover generated from the waveform, hence get redrawn in the background the next time
@@ -339,7 +352,7 @@ Audio medias gain a waveform skin in the player, and the data behind it is publi
   `waveform_color`, and two CSS custom properties control it: `references/player-embed.md`,
 - the peaks sidecar (`peaks/peaks.json`, one `{track}.json` per audio track) is plain public JSON
   an integration can render on its own; format and URLs in `references/playback.md`,
-- API 5.44 exposes the controls: the `waveform` media field, `peaks.files.index` in media
+- API 5.30 exposes the controls: the `waveform` media field, `peaks.files.index` in media
   responses, and the `waveform` / `waveform_color` company preferences: `references/api.md`.
 
 Described ahead of production, like the audio-track endpoints before it: check the published
@@ -347,7 +360,7 @@ OpenAPI description before relying on the API fields.
 
 ## 2.0.0 — 2026-08-23
 
-**`forceplaylist` changes meaning on the `playlist` webservice** (webservices 5.22). It read
+**`forceplaylist` changes meaning on the `playlist` webservice** (webservices 5.20). It read
 its numeric values inverted — `0` turned the filter on, `1` turned it off. They now mean what
 they say: `1` and `true` keep only the medias filed in at least one playlist, `0` and `false`
 do not filter.
@@ -364,7 +377,7 @@ change on a public endpoint, hence the major digit.
   numeric values are inverted — `0` turns the filter on, `1` turns it off. Send `true` or
   `false`. If you set `forceplaylist=1` expecting an ordering, you were getting neither.
 - Every parameter of every webservice now carries a description in the published description
-  (webservices 5.21). Two behaviours that were written nowhere are now stated: on `rss`, a
+  (webservices 5.20). Two behaviours that were written nowhere are now stated: on `rss`, a
   `playlist_id` always wins over `query`; and `page` remains an offset in items, as this
   reference already said.
 
@@ -385,6 +398,6 @@ being versioned, so an integrator can tell which state of the platform they are 
 
 - covers the three public surfaces: webservices, REST API, hosted player, plus the JS SDK,
   playback, security, analytics and feeds,
-- carries the API surface as of API 5.38 and webservices 5.20 — the per-track audio endpoints and
+- carries the API surface as of API 5.30 and webservices 5.20 — the per-track audio endpoints and
   the `multiple_audio` playlist filter are described and flagged as not yet in production,
 - adds a Gemini gem distribution alongside the Claude skill, built from the same files.

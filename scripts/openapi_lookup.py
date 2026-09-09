@@ -42,8 +42,11 @@ def load(which, refresh=False):
 
 def download(url, path):
     """Fetch a URL to a file, falling back to curl when Python has no CA bundle."""
+    if not url.startswith("https://"):
+        raise ValueError("refusing to download from a non-https URL: %s" % url)
     try:
-        with urllib.request.urlopen(url, timeout=120) as response:
+        # B310: the scheme is checked above, and SOURCES only holds https URLs.
+        with urllib.request.urlopen(url, timeout=120) as response:  # nosec B310
             data = response.read()
         with open(path, "wb") as handle:
             handle.write(data)

@@ -80,10 +80,10 @@ A media carrying several audio languages is flagged `metadata.global.is_multiple
   replace, rename or promote them — see `references/api.md`. `GET /medias/{media_id}` also returns
   `source.audio_tracks` for a read-only view, on a single media only,
 - per-track management needs a media produced by the current encoding pipeline. To know which
-  medias those are without a call each, read `source.encoding_version` over a listing (API 5.46) —
+  medias those are without a call each, read `source.encoding_version` over a listing (API 5.30) —
   `2` is the current pipeline, `1` the legacy one, and an **absent** field means the media publishes
   nothing yet. `references/api.md` spells out why that absence matters,
-- those endpoints need API 5.31 (5.37 for `source.audio_tracks`) and the `multiple_audio` filter
+- those endpoints need API 5.30 (`source.audio_tracks` too) and the `multiple_audio` filter
   webservices 5.20. Check `scripts/openapi_lookup.py show …` against the published description
   before relying on them: an older server answers `404`, or accepts the filter and ignores it.
 
@@ -114,7 +114,7 @@ JSON you can consume for your own rendering:
 
 - amplitudes are integers `0..100` spread over the whole duration; `count` mirrors `peaks.length` —
   2000 buckets, fewer only when the source holds fewer samples,
-- `GET /medias/{media_id}` returns the sidecar URL as `peaks.files.index` (API 5.44, encoded audio
+- `GET /medias/{media_id}` returns the sidecar URL as `peaks.files.index` (API 5.30, encoded audio
   medias only). The file lives on the media's asset tree, under `…/medias/{media_id}/peaks/peaks.json`,
 - a multi-track media publishes one sidecar per track, named by track token (`peaks/en.json`,
   `peaks/en-ad.json`) beside the default `peaks.json`; on medias produced by the current encoding
@@ -129,7 +129,7 @@ JSON you can consume for your own rendering:
 - a **live** channel plays through the same player with `live_id=STREAM_NAME`. The viewer can
   always rewind a little: the player exposes whatever the HLS playlist holds, and a live keeps
   about **100 seconds** behind the live edge. A live created with `live[dvr]=true` keeps about
-  **45 minutes** instead — that is what the DVR is. The API default is `false` since API 5.51.
+  **45 minutes** instead — that is what the DVR is. The API default is `false` since API 5.30.
   The `live_dvr` embed parameter is accepted but the current player does not read it,
 - a **Streamout** is a scheduled broadcast — a playlist played on a timetable — embedded with
   `str_id=STREAMOUT_ID`. Several player parameters do not apply to it (the table in

@@ -46,9 +46,9 @@ Available fields: `id`, `name`, `description`, `credits`, `keywords`, `customs`,
 videos, which is usually the feature people are impressed by. The matching excerpts come back in
 `metadata.highlight` on the medias that matched, with the words wrapped in `<em>` — that is what
 turns a result list into a useful one, and what lets you deep-link to a timecode when a subtitle
-matched. **Stay in JSON when you search on a server older than webservices 5.26**: the excerpts
+matched. **Stay in JSON when you search on a server older than webservices 5.20**: the excerpts
 came out under element names XML does not allow, and the document you got back with `query` and
-`f=xml` together did not parse at all. From 5.26 each excerpt sits in a `<value>` and XML works.
+`f=xml` together did not parse at all. From 5.20 each excerpt sits in a `<value>` and XML works.
 
 **Languages and countries.** `/ws/languages` and `/ws/countries` build filters that only offer
 values the catalog actually has. Watch the case — `languages` answers `fr`, `countries` answers

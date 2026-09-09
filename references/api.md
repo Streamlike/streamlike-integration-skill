@@ -8,7 +8,7 @@ The write path and the administration path: create and edit medias, upload files
 playlists, users, security, lives, streamouts, and read detailed analytics.
 
 **Server side only.** An API key acts as the user who created it — with every right of that
-account, or with the narrower list of roles it was restricted to (API 5.57, see *Restricting a key
+account, or with the narrower list of roles it was restricted to (API 5.30, see *Restricting a key
 to a few roles* below). HTTPS only — plain HTTP answers `404`. Requests and responses are JSON,
 except file uploads (multipart).
 
@@ -48,7 +48,7 @@ own, restricted to the roles it uses, with an expiration.
 
 ### Restricting a key to a few roles
 
-API 5.57 and later. A key of type `api` may carry its own list of roles, narrower than the account
+API 5.30 and later. A key of type `api` may carry its own list of roles, narrower than the account
 that created it. Until then every key held every right of its user: the key written into an
 integration that only lists a catalogue could also delete it.
 
@@ -91,7 +91,7 @@ order they bite:
   `400 INVALID_FORM` with `UNKNOWN_FIELDS` — the same answer an older server gives, since it does
   not know the field,
 - **omit the field at creation for a key that carries every right of the account, now and later.**
-  That is what every key did before 5.57, and what an integration that does not send the field goes
+  That is what every key did before 5.30, and what an integration that does not send the field goes
   on getting,
 - **send the whole list on every write: what you omit is revoked.** A `PATCH` with `roles`
   replaces the list, it does not add to it. An empty list is accepted, and leaves a key that can
@@ -198,7 +198,7 @@ Validation errors come back as machine-readable codes:
 Each endpoint documents its own error codes; `scripts/openapi_lookup.py errors /medias` lists them.
 Match on the code, never on the message text.
 
-**Since API 5.53 the published description declares `401` and `403` on every operation that needs
+**Since API 5.30 the published description declares `401` and `403` on every operation that needs
 authentication** — 250 of the 251, the exception being `POST /authent/token/unique`, which is what
 issues a token in the first place. Nothing changed at runtime: both answers were always possible,
 they were simply missing from the description, so a client generated from an older copy of the
@@ -209,7 +209,7 @@ unexpected error.
 **A resource you can read is not always a resource you can write.** The roles whose name ends
 in `_ALL` — `MEDIA_ALL`, `STREAMOUT_ALL` — open the reading of every company's objects, not the
 writing. An edit or a delete on an object owned by another company answers `404`, not `403`: the
-resource stops existing for you the moment you try to change it. Since API 5.55 this holds for
+resource stops existing for you the moment you try to change it. Since API 5.30 this holds for
 streamouts too, where the second barrier had been missing and the write went through. Media and
 streamout payloads both carry `company.id` and `company.name`, so a client can tell its own
 objects from the ones it may only read, before it sends the write rather than after the refusal.
@@ -221,7 +221,7 @@ delete refuses a live too, with `MANDATORY_ROLE`. Stopping a live is yours
 
 ## Maintenance windows
 
-Streamlike closes the platform for planned maintenance, announced in advance. Since API 5.52 a
+Streamlike closes the platform for planned maintenance, announced in advance. Since API 5.30 a
 window no longer stops everything:
 
 - **reads keep answering.** `GET`, `HEAD` and `OPTIONS` stay reachable, along with the
@@ -234,9 +234,9 @@ window no longer stops everything:
 - **the webservices (`/ws/*`) are not concerned at all.** A front end that reads its catalog through
   them never notices a window.
 
-Before 5.52 every endpoint answered `401 API_OFFLINE` for the whole window, reads included.
+Before API 5.30 every endpoint answered `401 API_OFFLINE` for the whole window, reads included.
 
-Reads declare a `401` of their own since 5.53, and it is the credentials one, not this one: a `GET`
+Reads declare a `401` of their own since 5.30, and it is the credentials one, not this one: a `GET`
 still answers during a window. Do not read that declaration as "reads can be refused for
 maintenance".
 
@@ -333,8 +333,8 @@ accordingly. A wrong value costs bandwidth on one side or quality on the other. 
 call answers `400 INVALID_FORM` with `INVALID_SOURCE_COMPLEXITY`.
 
 Accepted on `POST /medias` and on `PATCH /medias/{media_id}`, and readable back as
-`source.complexity`. API 5.31 to 5.49 dropped it from both — it was inert on the encoder of the
-day — and 5.50 brought it back, wired to what the encoder actually does.
+`source.complexity`. It was dropped from both for a while — it was inert on the encoder of the
+day — and API 5.30 brought it back, wired to what the encoder actually does.
 
 `POST /medias/{media_ids}/actions/complexity` sets it on medias that already exist, in bulk. Two
 things about it:
@@ -353,7 +353,7 @@ before. It is the same picture; the number is simply true now.
 
 ## Audio tracks and video replacement
 
-API 5.31 and later, on medias produced by the current encoding pipeline. `GET
+API 5.30 and later, on medias produced by the current encoding pipeline. `GET
 /medias/{media_id}/audio-tracks` says whether a media is one of them, and what it carries:
 
 ```json
@@ -376,12 +376,12 @@ a media that declares tracks is never promotable, one that declares none is neve
 And `audio[].language` is not an identifier: a regular track and its audio description share it.
 Use the token — `audio_default` carries one — for anything you pass back to a write endpoint.
 
-If all you need is the `encoding_v2` answer, do not make this call: since API 5.46 every media
+If all you need is the `encoding_v2` answer, do not make this call: since API 5.30 every media
 response carries `source.encoding_version`, listings included — see *Which pipeline encoded a
 media* below.
 
 `{language_id}` is a **track token**, not just a language code: `en` for the regular track, `en-ad`
-for its audio description (API 5.33 and later). The suffix is what types the track; there is no
+for its audio description (API 5.30 and later). The suffix is what types the track; there is no
 separate field. Subtitles follow the same convention, `fr-cc` for closed captions.
 
 | Call | Effect |
@@ -389,7 +389,7 @@ separate field. Subtitles follow the same convention, `fr-cc` for closed caption
 | `POST …/audio-tracks/{language_id}` | Adds the track, or replaces it when the language already exists |
 | `PATCH …/audio-tracks/{language_id}` | Renames it (`label`) or makes it the default (`default`) |
 | `DELETE …/audio-tracks/{language_id}` | Removes it |
-| `POST …/audio-tracks/{language_id}/promote` | Declares the language of a single-track media's audio (API 5.36) |
+| `POST …/audio-tracks/{language_id}/promote` | Declares the language of a single-track media's audio (API 5.30) |
 | `POST /medias/{media_id}/video/replace` | New video, every audio track and subtitle kept |
 
 The content of a track is `track[file]` (multipart) or `track[url]` for the platform to fetch;
@@ -408,7 +408,7 @@ Reading the same thing from the catalog side:
 
 - `GET /medias/{media_id}` returns `source.audio_tracks`, the published tracks with their
   `language`, `kind`, `label` and `default`. **Single media only** — it costs a manifest read, so
-  it is not served in listings (API 5.37 and later),
+  it is not served in listings (API 5.30 and later),
 - `source.is_multiple_audio` is a boolean on every video and audio media, listings included, and
   `GET /medias?source.is_multiple_audio=1` filters on it,
 - mass re-encoding refuses these medias (`INVALID_MEDIA_IS_MULTIPLE_AUDIO`): their tracks are
@@ -416,7 +416,7 @@ Reading the same thing from the catalog side:
 
 ## Which pipeline encoded a media
 
-API 5.46 and later. `source.encoding_version` is an integer saying which encoder produced the files
+API 5.30 and later. `source.encoding_version` is an integer saying which encoder produced the files
 the media publishes: `2` for the current pipeline, `1` for the legacy encoder. It is served
 everywhere a media is — single media, listings, medias embedded in another response — and costs no
 extra call.
@@ -446,7 +446,7 @@ It describes what is published **today**, not what was asked for. A media queued
 keeps answering `1` for as long as the legacy files are the ones being served, and switches to `2`
 when the new ones take over.
 
-What it buys you: until 5.46 the only way to know was `GET /medias/{media_id}/audio-tracks` and its
+What it buys you: until 5.30 the only way to know was `GET /medias/{media_id}/audio-tracks` and its
 `encoding_v2` flag, one call per media. A whole catalog now sorts itself in one listing call:
 
 ```bash
@@ -462,12 +462,12 @@ Two things that go with it:
 - it is **read only**, and not an accepted input. If you edit a media by reading it and posting the
   whole object back, **strip it first** — like any field the form does not know, sending it answers
   `400 INVALID_FORM` with `UNKNOWN_FIELDS`,
-- **it filters too, from API 5.48.** `GET /medias?source.encoding_version=2` keeps the medias
+- **it filters too, from API 5.30.** `GET /medias?source.encoding_version=2` keeps the medias
   published by the current pipeline, `1` the legacy ones, and leaving it out does not filter. The
   same parameter is on `GET /lives` and `GET /analytics/medias/{from}/{to}`. It reads the columns
   the returned field reads, so the value you ask for is the value that comes back — and a media
   publishing nothing is returned by **neither** value, so the two calls put together give you fewer
-  medias than the unfiltered listing. Against a server older than 5.48 the listing cannot be
+  medias than the unfiltered listing. Against a server older than 5.30 the listing cannot be
   restricted on it: read the field over a listing and sort client side.
 
 The same value, under the same name, is on the webservice side as
@@ -476,7 +476,7 @@ The same value, under the same name, is on the webservice side as
 
 ## Waveform and peaks
 
-API 5.44 and later. The player draws an audio media as an interactive waveform
+API 5.30 and later. The player draws an audio media as an interactive waveform
 (`references/player-embed.md`); the API holds its controls:
 
 - **`waveform`** on the media (`POST /medias`, `PATCH /medias/{media_id}`, and in media
@@ -493,7 +493,7 @@ API 5.44 and later. The player draws an audio media as an interactive waveform
 
 Changing `waveform_color` is not free: the platform redraws, in the background, every generated
 audio cover of the account. `GET /companies/preferences` tells you how many that is, in
-`waveform_cover_count` (API 5.45) — an integer counting the audio medias whose cover was generated
+`waveform_cover_count` (API 5.30) — an integer counting the audio medias whose cover was generated
 from the waveform. Covers you uploaded yourself are never counted and never touched. Three things
 about that field:
 

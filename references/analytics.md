@@ -70,7 +70,7 @@ privacy notice.
 ## Ratings
 
 `/ws/vote?company_id=…&media_id=…&value=0..5` stores a rating — **0 to 5**, `0` the worst and `5`
-the best, from webservices 5.26; before that `0` was rejected, quietly, with a `200` carrying
+the best, from webservices 5.20; before that `0` was rejected, quietly, with a `200` carrying
 `res: false`. A value outside the range still is. `/ws/media` returns
 `statistics.rating_hits` and `statistics.rating_totalvalue`; the average is their quotient, and
 `rating_hits` is `0` on a media nobody rated, so guard the division.
@@ -106,9 +106,9 @@ The API exposes the same numbers as the console, all on a `{from}/{to}` date ran
 `/ws/media` also carries a cheap playback counter (`statistics.media_access`) if all you need is
 "how many views" next to a thumbnail.
 
-### Breaking in API 5.54: `duration_total` in `/analytics/company/billable` changed unit
+### Breaking in API 5.30: `duration_total` in `/analytics/company/billable` changed unit
 
-**If you read `data.catalog.{date}.duration_total`, your figures change the day API 5.54 reaches
+**If you read `data.catalog.{date}.duration_total`, your figures change the day API 5.30 reaches
 production.** It used to be raw seconds. It is now **hours of weighted catalogue**, rounded to two
 decimals. Nothing was renamed and nothing moved: the same key answers a different unit. Code that
 plots it drops by three orders of magnitude without raising anything, and code that divides it by
@@ -195,7 +195,7 @@ Every other analytics endpoint — `viewership`, `medias`, `tokenstats`, the two
 `userstats`, `live/streams`, `engagement/{media_id}/connections` and the `company/*` reports — has
 no `aggregation` parameter at all.
 
-Since API 5.53 the published description of `aggregation` lists only the roll-ups the endpoint it
+Since API 5.30 the published description of `aggregation` lists only the roll-ups the endpoint it
 sits on actually offers, so it is worth reading per endpoint rather than assumed.
 
 ### Three figures that are not what they look like

@@ -121,7 +121,7 @@ a generated PNG on the CDN.
 Parse out the `src` if you need the file itself. `size` sets the module size, `level` the error
 correction level. Handy for print and signage.
 
-**The `src` comes back as `https://` from webservices 5.26.** Before that it followed the scheme of
+**The `src` comes back as `https://` from webservices 5.20.** Before that it followed the scheme of
 the short link the code encodes, which is built without TLS, so a fresh code came back as `http://`
 and browsers blocked it as mixed content in a secure page. Against an older server, rewrite the
 scheme yourself — the same file is served over both.

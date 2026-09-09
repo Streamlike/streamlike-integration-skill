@@ -23,7 +23,7 @@ Two rules that follow from that table, and that no integration may break:
 
 - **the REST API never runs in a browser, a mobile app or anything the end user controls.** An API
   key acts as the user who created it — with every right of that account unless the key was
-  restricted to a list of roles (API 5.57): reading it out of a bundle means handing over
+  restricted to a list of roles (API 5.30): reading it out of a bundle means handing over
   everything the key may do. Front ends talk to your own backend; your backend talks to the API,
 - **the webservices are the read path.** They are cache-friendly and fast; the API is not built for
   per-page-view reads and heavy front-end use of it may get the account throttled.

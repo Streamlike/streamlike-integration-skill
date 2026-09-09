@@ -129,7 +129,7 @@ curl -s "https://cdn.streamlike.com/ws/playlist?playlist_id=7e0b55bbd4bd0a91&que
   | xmllint --noout -
 ```
 
-From webservices 5.26 it parses: every excerpt is wrapped in a `<value>`. Against an older server
+From webservices 5.20 it parses: every excerpt is wrapped in a `<value>`. Against an older server
 it fails, and it fails as a whole document rather than in the highlight block alone.
 
 ```
@@ -221,7 +221,7 @@ curl -s "https://cdn.streamlike.com/ws/media?media_id=9dd61d7f5e077fdb" \
 curl -s "https://cdn.streamlike.com/ws/rss?playlist_id=7e0b55bbd4bd0a91&pagesize=3"
 curl -s "https://cdn.streamlike.com/ws/videositemap?playlist_id=7e0b55bbd4bd0a91" | head -40
 curl -s "https://cdn.streamlike.com/ws/qr?media_id=9dd61d7f5e077fdb&size=6&level=M"
-# <img src="https://cfcdn.streamlike.com/qr/….png" alt=""/>   ← https from webservices 5.26
+# <img src="https://cfcdn.streamlike.com/qr/….png" alt=""/>   ← https from webservices 5.20
 ```
 
 The `<enclosure>` of an mRSS or podcast item carries a **duration**, not a byte size. Compare the
