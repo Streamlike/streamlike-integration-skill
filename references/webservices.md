@@ -58,6 +58,19 @@ Three details cost people an afternoon each:
 `position` follows the manual order set in the back office, which is what a curated playlist
 expects.
 
+**A custom field can be an `orderby` too**, from webservices 5.21. Name it behind the prefix its
+values are served under: `orderby=customs.campaign` on `playlist`, `podcast` and `rss`,
+`orderby=custom_fields.rank` on `playlists`. Only a field your company opened to sorting in the
+back office is accepted, and the type declared there decides the order — a field typed as a number
+is ordered as a number, 9 before 10, where its text would have put 10 first; anything else is
+ordered as text. What does not carry the field comes last, whichever `sortorder` you ask for. A
+field left unsortable answers `404`, as an unknown `orderby` always has.
+
+And **only the public values take part in the order.** These webservices serve the public custom
+fields and those alone, so a field whose values are private sorts nothing here, and answers the same
+list whichever `sortorder` you ask for. The same field still sorts through the API, which is read by
+someone who may read the value itself.
+
 ## Errors
 
 **The webservices answer `404` with an HTML error page** — for an unknown media, an unknown
@@ -268,6 +281,11 @@ Because they are merged in last, **a custom field named like a standard one repl
 `duration` and `metadata.global.duration` stops being the duration of the media. Give your custom
 fields names of your own — a prefix is the cheapest protection — and never iterate over `global`
 assuming everything in it is either standard or yours.
+
+**Whatever the field holds, you read a string.** A field the catalogue types as a number or as a
+boolean is checked when it is written and ordered as what it is when you sort on it, but it is
+served here as the text it was written with: parse it yourself rather than expecting a JSON number.
+Typing and sorting are set through the API — `references/api.md`.
 
 ### No `html5_sources` at all? Check the account before the encoding
 

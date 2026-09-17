@@ -136,6 +136,12 @@ collection, send an empty array:
 
 Dates follow ISO 8601: `2026-08-19T14:30:00Z` or `2026-08-19T14:30:00+02:00`.
 
+**Batch actions carry their ids in the path** — `POST /medias/{media_ids}/actions/…`,
+`DELETE /hibernation/{hibernated_ids}/actions/delete` — as a comma-separated list, and the
+request line is capped at 8 kB by the front. That is about 470 ids; keep a call under 400 and
+split a larger batch into several calls, played one after the other. Past the cap the answer is
+the front's own `414`, not an API error. The back-office sends 100 ids per call.
+
 ## Listing, paging and shaping
 
 ```bash
@@ -151,7 +157,8 @@ curl -G "https://api.streamlike.com/medias" \
 - `range` uses first-last indexes, default `0-25`. `range=no` returns the count alone, which is the
   cheap way to know how much there is to walk,
 - `sorts[]` takes `field|asc` or `field|desc`, repeatable. Sorting is ignored when `search` is
-  supplied,
+  supplied. A custom field your company opened to sorting is named `customs.<field>` on the medias
+  and `custom_fields.<field>` on the playlists — see *Custom fields can be typed, and sorted on*,
 - **`fields[]` must be repeated, one per value.** A comma-joined list answers `400
   INVALID_FIELDS`. Dotted paths select nested fields (`source.duration`),
 - `search` is full text over the resource.
@@ -307,7 +314,7 @@ Content-Disposition: form-data; name="resource"
 {"permalink":"my-new-video","type":"video","visibility":{"state":"online"}}
 --STREAMLIKEBOUND
 Content-Type: video/mp4
-Content-Disposition: form-data; name="source[media_file]"; filename="mynewvideo.mp4"
+Content-Disposition: form-data; name="source[encode][media_file]"; filename="mynewvideo.mp4"
 
 [BINARY]
 --STREAMLIKEBOUND
@@ -318,11 +325,26 @@ Content-Disposition: form-data; name="cover"; filename="mynewcover.jpg"
 --STREAMLIKEBOUND--
 ```
 
+The source file lives under `source[encode]`, not directly under `source`: the three ways of
+handing over a file — `source[encode][media_file]` (the bytes, as above),
+`source[encode][media_url]` (a public URL Streamlike downloads from) and
+`source[encode][media_ftp_filename]` (a file already in your FTP watchfolder) — are exclusive,
+send exactly one. `source[complexity]`, below, sits one level up. A file sent as
+`source[media_file]` answers `400 INVALID_FORM` with `UNKNOWN_FIELDS`.
+
 One quirk of the form layer: a form key must not start with a digit, or it is read as an array
 index. Order `source[plop]` before `source[360]` when both are present.
 
 Large sources can also be dropped on the account's FTP watchfolder and pulled in with
 `POST /medias/{media_ids}/actions/retrieve` — steadier than a long HTTP upload over a poor link.
+
+**Any container the encoder reads is accepted** (API 5.33): `mp4`, `mov`, `mkv`, `webm`, `avi`,
+`wmv`, `flv`, `mpg`, `ts`, `m2ts`, `mts`, `mxf`, `ogv`, `dv` on the video side, `mp3`, `wav`,
+`m4a`, `aac`, `flac`, `ogg`, `opus`, `aiff`, `wma` on the audio side, and their kin. The extension
+decides the media type, nothing else: a `.m4a` makes an audio media, a `.mov` a video one, and
+`type` in `resource` must agree with it. Before 5.33 the list was short — `mp3` and `wav` for
+audio, fifteen video containers — and everything else answered `400 INVALID_FORM`; if your
+integration converts to mp4 or mp3 before uploading, it no longer needs to.
 
 ### Telling the encoder how hard the video is
 
@@ -507,6 +529,35 @@ about that field:
 
 As with the audio-track endpoints, check `scripts/openapi_lookup.py fields /medias/{media_id}`
 against the published description before relying on these: an older server does not know them.
+
+## Custom fields can be typed, and sorted on
+
+API 5.34 and later. Your own metadata rides on a media as `customs[]` (`name`, `value`, `public`)
+and on a playlist as `custom_fields[]`, the value being free text in both. The names your company
+uses are declared in one catalogue, `GET /medias/customfields`, and that catalogue now carries two
+options per field — `type` and `sortable` — which govern the medias and the playlists alike.
+
+- **`type` checks what may be written under a name.** `number` takes anything numeric, `boolean`
+  takes `true`, `false`, `1` and `0`, `json` takes a valid JSON document, `text` and an empty type
+  take any text, as before. A value that does not match answers `400 INVALID_FORM` with
+  `INVALID_CUSTOM_VALUE` on a media, `INVALID_CUSTOM_FIELDS_VALUE` on a playlist. The value is
+  still stored and returned as a string whatever the type: **do not expect a number to come back
+  as a JSON number**,
+- **values written before the type was declared are never re-checked.** A field typed today may
+  still hold values that a write would now refuse, so a read-modify-write of a whole media can
+  fail on a field you never touched. Send what you mean to change,
+- **`sortable` opens a field to sorting.** The criterion is the name of the field behind the
+  prefix the resource spells its values with: `sorts[]=customs.campaign|desc` on `GET /medias`,
+  `sorts[]=custom_fields.rank|asc` on `GET /organization/playlists`. A field typed `number` or
+  `boolean` is ordered as a number — 9 before 10, where its text would have put 10 first — and
+  anything else as text. What does not carry the field comes last, ascending as descending,
+- **a criterion naming a field left unsortable, or never declared, is refused** with
+  `400 INVALID_SORTS`, exactly as any unknown sort field is. Read `GET /medias/customfields` and
+  check `sortable` on the field before sorting on it.
+
+Whoever administers your account sets both options, in the back office or through
+`POST /medias/customfields`, which replaces the whole catalogue on every write. Against a server
+older than 5.34 the catalogue answers neither option and no custom field sorts.
 
 ## Endpoint map
 

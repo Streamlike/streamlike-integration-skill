@@ -10,7 +10,7 @@ Small to medium files, in one request — `POST /medias`, multipart, JSON in a p
 curl -X POST "https://api.streamlike.com/medias" \
   -H 'X-Streamlike-Authorization: streamlikeAuth token="YOUR_KEY"' \
   -F 'resource={"name":"Board meeting","permalink":"board-meeting-2026-08","type":"video","visibility":{"state":"offline"}};type=application/json' \
-  -F "source[media_file]=@meeting.mp4;type=video/mp4" \
+  -F "source[encode][media_file]=@meeting.mp4;type=video/mp4" \
   -F "cover=@cover.jpg;type=image/jpeg"
 ```
 

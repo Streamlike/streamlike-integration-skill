@@ -44,6 +44,28 @@ fullscreen button does nothing, without `autoplay` a muted autostart is refused 
 `setResponsiveIframe()` from `js-streamlike-sdk` does this from a media id, and fetches the ratio
 for you — see `references/js-sdk.md`.
 
+### Sizing on phones and small players
+
+The player sizes its own controls to the box it is shown in — the iframe, so the tiers below read
+the iframe's size, not the page's. Every size of the chrome (bar buttons, icons, text, the central
+play button) derives from one base:
+
+| Situation | Base | What changes |
+| --- | --- | --- |
+| default | 12px | 36px bar buttons, central button up to 120px |
+| touch screen (`pointer: coarse`) | 15px | 45px buttons, the 44px target Apple and Google ask for; 150px central button |
+| iframe narrower than 480px | — | the volume slider (the device has its own keys), the time readout and picture-in-picture leave the bar |
+| iframe narrower than 300px or shorter than 230px | 10px | 30px buttons |
+
+The central button also follows the iframe: 40% of its short side, between 48px and the tier's maximum (74px in a 330×185 iframe, 120px from 300px high).
+
+A custom skin (the `skin` parameter) sets the base with one custom property, and the whole player
+follows on both engines: `.slplayer { --sl-ui-scale: 13px; }`. The player never declares the
+property — it reads it with a fallback per tier — so a skin's value wins whatever the loading
+order, without `!important`; a value set unconditionally applies everywhere, phones included, and
+`@media` rules on the same property keep tiers of your own. On iPhone and iPad, THEOplayer adds its
+own mobile layout (centred menus, slightly larger icons) on top of these tiers.
+
 ## Controlling the player from the page
 
 Add `events=1` to the player URL, then talk to the iframe with `postMessage`. Give the iframe an

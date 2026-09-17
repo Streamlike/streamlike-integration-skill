@@ -7,6 +7,67 @@ patch for corrections that change nothing you would have written differently.
 The same version is published to both distributions — the Claude skill and the Gemini gem — from
 the same source.
 
+## 4.6.0 — 2026-09-16
+
+**The player sizes its controls to the screen, and a skin sets the base** (`references/player-embed.md`,
+"Sizing on phones and small players"). Every size of the chrome — bar buttons, icons, text, the
+central play button — derives from one base the player picks by tier: 12px, 15px on a touch screen
+(45px buttons), 10px in a player under 300px wide or 230px high; under 480px wide the volume slider,
+the time readout and picture-in-picture leave the bar. A skin overrides the base through the
+`--sl-ui-scale` custom property on `.slplayer`, which wins whatever the stylesheet order, on both
+engines; per-breakpoint `@media` rules on the same property keep tiers of your own. Nothing changes
+for an embed that sets nothing.
+
+## 4.5.0 — 2026-09-16
+
+**Custom fields can be typed, and sorted on** (API 5.34, webservices 5.21). The names your company
+uses are declared in one catalogue, `GET /medias/customfields`, and each entry now carries two
+options that govern the custom fields of your medias and of your playlists alike.
+
+`type` checks what may be written under a name — `number`, `boolean` (`true`, `false`, `1`, `0`),
+`json`, or nothing, which keeps taking any text as before. A value that does not match answers
+`400 INVALID_FORM` with `INVALID_CUSTOM_VALUE` on a media, `INVALID_CUSTOM_FIELDS_VALUE` on a
+playlist. **Whatever the type, the value is still stored and served as a string**: do not expect a
+number to come back as a JSON number. And values written before the type was declared are never
+re-checked, so a read-modify-write of a whole media can fail on a field you never touched — send
+only what you mean to change.
+
+`sortable` opens a field to sorting, under the prefix the resource spells its values with:
+`sorts[]=customs.campaign|desc` on `GET /medias`, `sorts[]=custom_fields.rank|asc` on
+`GET /organization/playlists`, `orderby=customs.campaign` on the `playlist`, `podcast` and `rss`
+webservices, `orderby=custom_fields.rank` on `playlists`. A field typed as a number is ordered as a
+number — 9 before 10, where its text would have put 10 first — and anything else as text; what does
+not carry the field comes last, whichever direction you ask for. A field left unsortable, or never
+declared, is refused as any unknown sort field is: `400 INVALID_SORTS` on the API, `404` on the
+webservices.
+
+One rule belongs to the webservices alone: **only the public values take part in the order.** They
+serve the public custom fields and those alone, so ordering on a private value would hand it to you
+a request at a time; a field whose values are private therefore sorts nothing there and answers the
+same list whichever `sortorder` you ask for. The API, read by someone who may read the value
+itself, orders on private values like any other.
+
+Neither option is set from an integration: whoever administers your account sets them in the back
+office, or through `POST /medias/customfields`, which replaces the whole catalogue on every write.
+
+## 4.4.0 — 2026-09-15
+
+**Every container the encoder reads is now an accepted source** (API 5.33). `.m4a`, `.flac`,
+`.aac`, `.ogg`, `.opus`, `.aiff`, `.wma` on the audio side, `.flv`, `.mts`, `.m2ts`, `.mxf`,
+`.ogv`, `.dv` and more on the video side used to answer `400 INVALID_FORM` on
+`source[encode][media_file]`, `source[encode][media_url]` and the FTP watchfolder. The extension
+still decides the media type. An integration that converted to mp4 or mp3 before uploading can
+stop doing so. `references/api.md`, « Uploading files ».
+
+## 4.3.2 — 2026-09-14
+
+**Batch actions state their ids ceiling** (API 5.32). Nothing changed in what
+`POST /medias/{media_ids}/actions/…` and the hibernation actions accept; the reference now says
+what always held: the ids travel in the request line, the front caps it at 8 kB, so a call stays
+under 400 ids and a larger batch is split into several calls. Past the cap the answer is the
+front's `414`, not an API error. If your integration tags or unpublishes thousands of medias in
+one call, it has been failing silently on the biggest ones — page the ids.
+
 ## 4.3.1 — 2026-09-09
 
 **Renumbering only. No endpoint, field, parameter or rule changed.** Everything the Streamlike
