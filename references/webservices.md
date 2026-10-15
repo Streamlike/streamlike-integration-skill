@@ -1,7 +1,10 @@
 # Webservices (`/ws/*`)
 
-The read path of the platform. Fast, cacheable, made to drive video interfaces. Base URL in
-production:
+The read path of the platform, and the one a front end should use for every read: anonymous, served
+from an index built for reading, made to drive video interfaces under page-view traffic. Keep the
+REST API for writes and for data that must not be public (`references/api.md`); do not proxy API
+reads to your pages. Cache the responses on your side (*Practical advice* at the end of this file).
+Base URL in production:
 
 ```
 https://cdn.streamlike.com/ws/<service>
@@ -19,7 +22,7 @@ pass to the repeatable filters below.
 | Service | What it returns | Needs IP whitelisting |
 | --- | --- | --- |
 | `playlists` | Every online playlist of a company | no |
-| `playlist` | The medias of one or several playlists, paginated and filtered | no |
+| `playlist` | The media of one or several playlists, paginated and filtered | no |
 | `media` | Everything about one media | no |
 | `related` | Medias sharing keywords with a given media | no |
 | `languages` | Languages present in the online catalog | no |
@@ -42,8 +45,13 @@ catalog.
 
 Three details cost people an afternoon each:
 
-- **`page` is an offset, not a page number.** `pagesize=10&page=10` returns items 10 to 19;
-  `page=1` returns items 1 to 10. To walk a playlist ten by ten, increment `page` by `pagesize`,
+- **paging is by offset, never by page number.** `pagesize=10&offset=10` returns items 10 to 19.
+  To walk a playlist ten by ten, add `pagesize` to `offset` at each call. `offset` exists since
+  webservices 5.25, on `playlist`, `playlists`, `related` and `rss`. Older code sends `page`, which
+  carries the very same offset under a misleading name — `page=1` returns items 1 to 10, not the
+  second page. `page` is deprecated and keeps working; sent together, `offset` wins. Beware of
+  unknown parameters in general: they are silently ignored, so a misspelt `ofset` returns the first
+  items at every call,
 - **`sortorder` takes `up` or `down`**, not `asc`/`desc`. A wrong value answers `404`,
 - **the default `pagesize` is 10.** Raise it deliberately; the platform documentation asks
   integrators not to use very large values (`pagesize=999`) on every page view. Cache instead.
@@ -52,11 +60,14 @@ Three details cost people an afternoon each:
 
 | Service | `orderby` |
 | --- | --- |
-| `playlist`, `rss` | `id`, `name`, `duration`, `vote`, `hit`, `lastplaybackdate`, `creationdate`, `lastupdateddate`, `lastupdatedfiledate`, `releasedate`, `position` |
+| `playlist` | `id`, `name`, `duration`, `vote`, `vote.rate`, `hit`, `lastplaybackdate`, `creationdate`, `lastupdateddate`, `lastupdatedfiledate`, `releasedate`, `position` |
 | `playlists` | `id`, `name`, `creationdate`, `position` |
+| `podcast` | `releasedate`, `lastupdateddate`, `lastupdatedfiledate` |
+| `rss` | `creationdate`, `releasedate`, `name` |
 
 `position` follows the manual order set in the back office, which is what a curated playlist
-expects.
+expects. `vote` orders by the sum of the votes, `vote.rate` (webservices 5.22) by the average
+rating — the `rating_rate` the media object serves.
 
 **A custom field can be an `orderby` too**, from webservices 5.21. Name it behind the prefix its
 values are served under: `orderby=customs.campaign` on `playlist`, `podcast` and `rss`,
@@ -114,8 +125,12 @@ RFC 3339 spelling and a few strict parsers reject it. **Durations** are whole se
 between two. **URLs are protocol-relative** (`//cdn…`) except covers, storyboards and manifests,
 which come back absolute in `https:`.
 
-**Only online medias are ever returned**, which is why `metadata.global.status` always reads
-`online`. There is nothing to filter on it.
+**Only online media are returned by default**, which is why `metadata.global.status` usually
+reads `online`. Turn the company preference `media_archived_in_ws` on — `POST`/`PATCH
+/companies/preferences` on the API, off by default since API 5.41 — and an archived media comes
+through here too (webservices 5.23 and later honor it), in `media`, `playlist`, `related` and
+`rss` alike, `status` then reading `archived`. There is still no parameter to filter on it, and an
+offline media never comes through either way — the preference only reaches archived.
 
 ### XML costs more than a parameter
 
@@ -147,19 +162,20 @@ repeating the parameter — `playlist_id[]=ID1&playlist_id[]=ID2` — and the re
 
 | Parameter | Effect |
 | --- | --- |
-| `playlist_id` / `view_id` / `company_id` | The source of the medias |
-| `page`, `pagesize` | Offset and count (see above) |
+| `playlist_id` / `view_id` / `company_id` | The source of the media |
+| `offset` (`page`, deprecated), `pagesize` | Offset and count (see above) |
 | `orderby`, `sortorder` | Sorting (see above) |
 | `query`, `search_fields[]` | Full-text search. Fields: `id`, `name`, `description`, `credits`, `keywords`, `customs`, `transcription`, `permalink`, `subtitle` |
 | `lng` | Restrict to a language |
 | `country` | Restrict to a country |
-| `encoded` | Keep only medias whose encoding is finished |
-| `multiple_audio` | `1` keeps only multi-track medias, `0` only single-track ones, absent does not filter. Webservices 5.20 and later — earlier servers accept it and ignore it |
-| `encoding_version` | `2` keeps only the medias published by encoding-v2, `1` only those published by the legacy encoder, absent does not filter. A media publishing nothing carries no version and is returned by neither value; an unknown value answers `404`. **Webservices 5.20 and later** |
-| `not_media_ids[]` | **Exclude specific medias** — repeat the parameter, one id per occurrence. `metadata.size` is corrected accordingly, so paging stays consistent |
+| `encoded` | Keep only media whose encoding is finished |
+| `multiple_audio` | `1` keeps only multi-track media, `0` only single-track ones, absent does not filter |
+| `format[]` | **Keeps only the picture formats given**: `portrait`, `square`, `landscape`, read from `metadata.global.ratio` — portrait below 0.95, square from 0.95 to 1.05, landscape above. Vertical videos (reels, shorts) are `portrait`. Repeat it for several (`format[]=portrait&format[]=square`); a single `format=portrait` works too. Audio media and media not encoded yet match no value. An unknown value answers `404`. Webservices 5.25 and later |
+| `encoding_version` | `2` keeps only the media published by encoding-v2, `1` only those published by the legacy encoder, absent does not filter. A media publishing nothing carries no version and is returned by neither value; an unknown value answers `404`. **Webservices 5.20 and later** |
+| `not_media_ids[]` | **Exclude specific media** — repeat the parameter, one id per occurrence. `metadata.size` is corrected accordingly, so paging stays consistent |
 | `not_playlist_ids[]`, `not_view_ids[]` | Exclude whole playlists or views |
 | `not_languages[]`, `not_countries[]` | Exclusions by language or country |
-| `forceplaylist` | Keeps only the medias filed in at least one playlist, dropping those filed nowhere. Redundant with `playlist_id`, which already implies it. Accepts `true`/`false` or `1`/`0`. **Webservices 5.20 and later** — before that, `0` and `1` were read inverted |
+| `forceplaylist` | Keeps only the media filed in at least one playlist, dropping those filed nowhere. Redundant with `playlist_id`, which already implies it. Accepts `true`/`false` or `1`/`0`. **Webservices 5.20 and later** — before that, `0` and `1` were read inverted |
 
 Response shape:
 
@@ -181,7 +197,7 @@ ids at once and `metadata` holds nothing but `size` — there is no single playl
 
 ### Searching
 
-A `query` adds `metadata.highlight` to the medias where the search actually matched, and to those
+A `query` adds `metadata.highlight` to the media where the search actually matched, and to those
 alone. Its keys are the fields that matched, its values the matching excerpts with the matched
 words wrapped in `<em>`. Two shapes live in it: a text field such as `name.stemmed` or
 `description` gives **a list of strings**, a matched subtitle gives `subtitle.<language>` holding
@@ -227,24 +243,29 @@ GET /ws/media?permalink=PERMALINK
     "keywords": {"standard_keywords": [{"standard_keyword": "démo"}]},
     "geolocation": {"zoom_level": 1}
   },
-  "statistics": {"media_access", "rating_hits", "rating_totalvalue"},
+  "statistics": {"media_access", "rating_hits", "rating_totalvalue", "rating_rate"},
   "html5_sources": [{"html5_source": {"type": "streamlike_html5", "manifest": "…m3u8…"}}]
 }}
 ```
 
 Fields worth knowing:
 
+- `global.status` reads `online`, or `archived` when the company turned `media_archived_in_ws` on
+  (API 5.41, honored here from webservices 5.23 — see above) and this particular media is
+  archived. Never `offline`,
 - `global.ratio` is the aspect ratio — feed it to your responsive wrapper
   (`padding-top: 100 / ratio %`),
 - `global.duration` is in seconds,
 - `global.is_tokenized`, `has_password`, `is_secured` tell you whether a plain player URL will
   play; see `references/security.md`,
-- `global.is_multiple_audio` marks medias carrying several audio tracks,
+- `global.is_multiple_audio` marks media carrying several audio tracks,
 - `global.encoding_version` says which encoder produced the files the media publishes: `2` for the
   current pipeline, `1` for the legacy one (webservices 5.20 and later). See the warning below
   before comparing it,
 - `statistics.media_access` is the playback counter, `rating_hits` / `rating_totalvalue` the
-  ratings collected through `vote` (average = `rating_totalvalue / rating_hits`),
+  ratings collected through `vote`, and `rating_rate` their average out of 5 (webservices 5.22 —
+  before that, compute `rating_totalvalue / rating_hits` yourself). The same object is served by
+  `media`, `playlist` and `related`,
 - `global.lastupdatedfile_date` is the last **successful encoding**, where `lastupdated_date` is the
   last change to the metadata. Renaming a media moves the second and not the first — so the file
   date is the one to key your own file cache on,
@@ -328,12 +349,12 @@ Two more details:
   unlike the flags sitting next to it — `is_360`, `is_multiple_audio`, `is_tokenized` are booleans
   rendered as `0` or `1`. Here, `1` means the legacy encoder, not "true",
 - **it is returned everywhere a media is, and `playlist` filters on it from webservices 5.20.**
-  `media`, `playlist` and `related` serialize their medias identically, so `global.encoding_version`
-  is in all three responses. `/ws/playlist?encoding_version=2` keeps the medias published by the
+  `media`, `playlist` and `related` serialize their media identically, so `global.encoding_version`
+  is in all three responses. `/ws/playlist?encoding_version=2` keeps the media published by the
   current pipeline, `1` the legacy ones, and leaving it out does not filter — a media publishing
   nothing carries no version and is returned by neither value. An unknown value answers `404`,
   which is the webservice habit and differs from the API, whose filters drop what they do not
-  recognise. `media` answers about one media you name and `related` returns encoded medias only, so
+  recognise. `media` answers about one media you name and `related` returns encoded media only, so
   neither takes the parameter. The API filters on it too, from 5.30 (`references/api.md`).
 
 ## `playlists`
@@ -372,7 +393,7 @@ catalogs where keywords were never filled in. `view_id` restricts the pool.
 Three things this service does that the others do not:
 
 - **the source media is never in its own results.** No need to filter it out,
-- **only encoded medias come back.** A media still waiting for its first encoding is skipped
+- **only encoded media come back.** A media still waiting for its first encoding is skipped
   whatever its keywords, and so is a live — expect no `type: "live"` here. If you use `related` to
   build a "more like this" strip, that is the reason a live never appears in one,
 - **there is no total count**, unlike `playlist`.
@@ -446,7 +467,7 @@ the legacy encoder and the current one. Read it defensively.
 - **the numbers are not all of the same type.** The HLS master entry carries the JSON number `0` in
   `globalbitrate`, while renditions carry strings, because the generator reads them out of the file
   name. Cast before you compare, or `globalbitrate > 1000` matches nothing,
-- legacy **audio** medias are shaped differently again: `manifest.mp3` and `manifest.aac` are single
+- legacy **audio** media are shaped differently again: `manifest.mp3` and `manifest.aac` are single
   objects, not lists. Code that iterates every section as an array breaks on them,
 - read audio-track languages from `manifest.audio[].language`, never out of a file name,
 - passing a `token` rewrites **every field whose name contains `url`** and nothing else. Without a

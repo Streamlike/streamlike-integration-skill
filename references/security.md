@@ -110,6 +110,10 @@ Corporate networks that block by default need these open, all over HTTPS:
 Ask your Streamlike contact for the current list before writing firewall rules: it is revised as
 infrastructure moves.
 
+The network check page, `https://cdn.streamlike.com/network-check`, tests the four purposes
+from the viewer's own browser and prints the list to hand to IT. Send it to attendees before a
+live event: a blocked `*.streamlive.cloud` leaves the viewer with the poster and no play button.
+
 ## File integrity
 
 Every manifest carries SHA-256 signatures of the encoded files. Keeping the original signature

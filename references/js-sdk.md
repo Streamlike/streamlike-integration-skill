@@ -1,6 +1,6 @@
 # `js-streamlike-sdk`
 
-The official browser SDK: TypeScript, MIT, **no runtime dependency**. Current version 3.8.0.
+The official browser SDK: TypeScript, MIT, **no runtime dependency**. Current version 3.10.0.
 
 ```
 https://github.com/Streamlike/js-streamlike-sdk
@@ -21,7 +21,7 @@ Or straight from a CDN, no build step:
 ```html
 <div id="my-player"></div>
 <script type="module">
-  import { generatePlaylistPlayer } from 'https://cdn.jsdelivr.net/npm/js-streamlike-sdk@3.8.0/dist/index.mjs';
+  import { generatePlaylistPlayer } from 'https://cdn.jsdelivr.net/npm/js-streamlike-sdk@3.10.0/dist/index.mjs';
   await generatePlaylistPlayer('my-player', { playlistId: 'PLAYLIST_ID' });
 </script>
 ```
@@ -84,9 +84,9 @@ const controller = await generatePlaylistPlayer('playlist-player', {
   info:     { title: true, position: true, duration: true, views: false, description: false },
   listItem: { thumbnail: true, index: true, title: true, duration: true },
   listPosition: 'right',      // 'right' | 'left' | 'bottom' | 'top'
-  pageSize: 10,               // medias per request
+  pageSize: 10,               // media per request
   autoNext: true,
-  hideTokenized: true,        // drop medias that cannot be played
+  hideTokenized: true,        // drop media that cannot be played
   fullscreen: false,
   autostart: false,
   loop: false,
@@ -103,10 +103,10 @@ The controller exposes `play`, `pause`, `seek`, `next`, `previous`, `playIndex`,
 Behaviour worth knowing before you fight it:
 
 - **paging is automatic.** Medias load `pageSize` at a time; nearing the end of the loaded set
-  fetches the next page, a "load more" button appears while medias remain, and the counter reads
+  fetches the next page, a "load more" button appears while media remain, and the counter reads
   `20 / 330`. `getTotal()` is the real size,
-- **restricted medias are handled.** Token-protected medias are hidden by default and removed from
-  the counts, so positions stay consistent; medias secured by IP or referrer keep their player and
+- **restricted media are handled.** Token-protected media are hidden by default and removed from
+  the counts, so positions stay consistent; media secured by IP or referrer keep their player and
   only show a notice if playback actually fails. The player probes the URL with a `HEAD` request
   rather than guessing,
 - **`fullscreen: true` fullscreens the container**, not the iframe — which is what keeps playback
@@ -123,11 +123,15 @@ Behaviour worth knowing before you fight it:
 
 `generateWords(wordsUrl, { wordsContainer, iframePlayer, autoScroll })` needs the words file of a
 subtitle track, found at `media.metadata.subtitles[0].subtitle.url.words`, plus the player iframe —
-so call it after the player exists. `generateTrimmer` binds a start/end selector to your own number
+so call it after the player exists. The words file is an object `{source, language, words}` since
+September 2026, each word carrying its trailing punctuation (`mark`) and where its timing comes
+from (`source`); older files are a bare list. `generateWords` reads both (3.9.0 and later), and
+its promise resolves with `wordsCount`, plus `source` and `language` when the file has them. Code
+of your own that reads the file must accept both shapes. `generateTrimmer` binds a start/end selector to your own number
 inputs, for editing tools.
 
 ## When not to use it
 
 The SDK is browser-side, so it only reaches what the webservices expose. Anything that writes —
-creating medias, editing metadata, issuing playback tokens — goes through your backend and the REST
+creating media, editing metadata, issuing playback tokens — goes through your backend and the REST
 API. There is no JavaScript SDK for the REST API, and there should not be one in a browser.

@@ -4,7 +4,7 @@ Ready-made outputs that save writing a generator.
 
 ## WebTV profiles: where the links point
 
-Feeds contain links, and the platform has to know what a link to one of your medias looks like. A
+Feeds contain links, and the platform has to know what a link to one of your media looks like. A
 **WebTV profile** holds two base URLs — one for a media, one for a playlist:
 
 ```
@@ -23,7 +23,7 @@ https://cdn.streamlike.com/ws/rss?playlist_id=PLAYLIST_ID&profile_id=PROFILE_ID
 ```
 
 An mRSS 2.0 feed of a playlist or a company, filtered like `/ws/playlist` (`company_id`,
-`playlist_id`, `lng`, `query`, `orderby`, `sortorder`, `page`, `pagesize`). Only online medias are
+`playlist_id`, `lng`, `query`, `orderby`, `sortorder`, `offset` (`page`, deprecated), `pagesize`). Only online media are
 included. Specification: `http://www.rssboard.org/media-rss`. A `playlist_id` always wins over a
 `query`: the search term is read only when no playlist is given.
 
@@ -52,8 +52,7 @@ Without a `playlist_id` — that is, when you search — the channel `<title>` i
 https://cdn.streamlike.com/ws/podcast?playlist_id=PLAYLIST_ID&lng=fr&orderby=releasedate
 ```
 
-A podcast feed built from a playlist of audio or video medias, provided the HTML5 option is enabled
-on the account. Only `playlist_id`, `lng` and `orderby` apply. Per-playlist podcast metadata (name,
+A podcast feed built from a playlist of audio or video media. Only `playlist_id`, `lng` and `orderby` apply. Per-playlist podcast metadata (name,
 author, category, cover) comes from the platform and is returned by `/ws/playlists`.
 
 **Two guards decide whether there is a body at all**, and both are settings in the back office
@@ -80,7 +79,7 @@ https://cdn.streamlike.com/ws/videositemap?playlist_id=ID1|ID2|ID3&profile_id=PR
 Generates the sitemap search engines expect: for each media a `<loc>` built from the profile, plus
 title, description, large thumbnail, file URL, player URL, duration, publication date and keywords.
 Several playlists are joined with `|`; `company_id` covers the whole account. `no_content_loc`
-leaves out the direct file URL when you do not want it exposed. Audio medias are listed too, in a
+leaves out the direct file URL when you do not want it exposed. Audio media are listed too, in a
 `<video:video>` like the rest, with an MP3 in `<video:content_loc>` — the name of the service says
 video, the selection does not.
 

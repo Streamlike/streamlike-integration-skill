@@ -1,4 +1,4 @@
-# Publishing medias from a backend
+# Publishing media from a backend
 
 Getting files into the platform, encoded and published, without a human in the back office.
 
@@ -34,7 +34,7 @@ Encoding is asynchronous. A freshly created media is not playable, and its manif
 yet.
 
 - `GET /pipelines` lists the pipelines and their jobs, with their state and their error when one failed (the job *log* itself is staff-only and answers `403`),
-- `GET /medias?encoded=1` — and `encoded=1` on `/ws/playlist` — filter on medias whose encoding
+- `GET /medias?encoded=1` — and `encoded=1` on `/ws/playlist` — filter on media whose encoding
   finished. Poll that rather than guessing a delay,
 - `POST /jobs/{job_id}/restart` re-runs a failed job, `POST /medias/{media_ids}/actions/reencode`
   re-encodes from the source — but not a multi-track media, which answers
@@ -48,7 +48,7 @@ Front ends should never show a media that is still encoding: filter on `encoded`
 | Goal | Call |
 | --- | --- |
 | Subtitles | `POST /medias/{media_id}/subtitles/{language_id}` |
-| Automatic subtitles | `POST /medias/{media_ids}/actions/speechtotext` |
+| Automatic subtitles | `POST /medias/{media_ids}/actions/speechtotext`, several target languages at once with `speech_to_text[languages][]` |
 | Chapters | `POST /medias/{media_id}/chapters/{language_id}` |
 | Interactions (clickable overlays) | `POST /medias/{media_id}/interactions/{language_id}` |
 | Audio tracks | `POST /medias/{media_id}/audio-tracks/{language_id}`, `…/promote` for a single-track media |
@@ -84,12 +84,17 @@ States are `online`, `offline` and `archived`. Bulk changes go through
   it is the only `401` that a retry ever fixes,
 - **conflicts**: `409` means an operation is already running on that media (a re-encode, an audio
   track update). Wait and retry — `source.encoding_operation_running` on `GET /medias/{media_id}`
-  tells you when it is over, which beats retrying on a timer,
+  tells you when it is over, which beats retrying on a timer. The one write that never answers
+  `409` for this is `actions/speechtotext`: it is accepted, and its subtitles are published by
+  themselves once the running operation ends (`jobs.waiting_for` on the pipeline shows the wait).
+  It does wait for another transcription, though — that one answers `400
+  INVALID_MEDIA_SPEECHTOTEXT_RUNNING` — so ask for your languages in a single call with
+  `speech_to_text[languages][]` rather than one call per language,
 - **idempotency**: `permalink` is a good deduplication key for a pipeline that may run twice — but
-  it is unique platform-wide, not per account, and deleted medias still hold theirs. A generic
+  it is unique platform-wide, not per account, and deleted media still hold theirs. A generic
   slug can come back as `INVALID_PERMALINK` even though nothing in your catalog uses it; prefix
   yours,
 - **soft deletion**: deleting a media hides it from the API and the webservices, but a front end
   holding a cached id will get a `404`. Refresh caches after a purge,
-- **archives**: `Hibernation` endpoints hold medias moved out of active storage. They are not
+- **archives**: `Hibernation` endpoints hold media moved out of active storage. They are not
   playable until retrieved.

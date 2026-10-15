@@ -18,6 +18,8 @@ https://cdn.streamlike.com/o.k?m=MEDIA_ID&t=TIMESTAMP&s=hls&p=myapp
 | `t` | recommended | Cache buster: a timestamp or random number |
 | `s` | recommended | Stream type played: `mp4` or `hls` |
 | `p` | no | Name of your player, to tell sources apart in the console |
+| `l` | no | Audio track heard when playback starts, as a track token: `fr`, `en`, `fr-ad` for an audio description. Omit it on a media with a single, undeclared audio track |
+| `us` | no | Where the traffic comes from, as your own label (`newsletter-october`, `partner-site`); the Streamlike player sends the `utm_source` of its URL here. Takes the place of the referrer in the referrer statistics grouped by page. Up to 100 characters |
 
 Fire it on the first `playing` event, once per playback, and unbind afterwards — every call counts
 as a view.
@@ -46,10 +48,13 @@ https://cdn.streamlike.com/eng.k?m=MEDIA_ID&d=137&t=hls&q=720&p=myapp
 | `s` | no | Session id, unique per player display |
 | `u` | no | User id — the same value you pass as `user_token` elsewhere |
 | `f` | no | Client fingerprint |
+| `l` | no | Audio track heard over the segment, as a track token (`fr`, `en`, `fr-ad`). Omit it on a media with a single, undeclared audio track |
 
 Call it at short, regular intervals so an abrupt close loses almost nothing, and again on every
 seek, since a jump ends the current segment and starts another. Overlapping segments are expected
-and are what makes replays visible.
+and are what makes replays visible. A change of audio track ends the current segment the same way:
+a segment is always heard in one language, so the per-language figures of a multi-track media add
+up.
 
 ## Identifying a viewer: `user_token`
 
@@ -90,7 +95,7 @@ The API exposes the same numbers as the console, all on a `{from}/{to}` date ran
 | Endpoint | Figures |
 | --- | --- |
 | `GET /analytics/playback/{from}/{to}` | Playbacks per type |
-| `GET /analytics/playback/top/popular/{from}/{to}` | Most watched medias |
+| `GET /analytics/playback/top/popular/{from}/{to}` | Most watched media |
 | `GET /analytics/playback/location/{countries\|cities\|continents}/{from}/{to}` | Geography |
 | `GET /analytics/playback/client/{devices\|browsers\|os}/{from}/{to}` | Devices |
 | `GET /analytics/playback/referers/{from}/{to}` | Where playbacks come from |
@@ -99,6 +104,7 @@ The API exposes the same numbers as the console, all on a `{from}/{to}` date ran
 | `GET /analytics/viewership/{from}/{to}` | Viewership |
 | `GET /analytics/medias/{from}/{to}` | Per-media table |
 | `GET /analytics/userstats/{media_id}/{user_token}/{from}/{to}` | One viewer on one media |
+| `GET /analytics/languages/{media_id}/{playbacks\|listening\|transfer}/{from}/{to}` | Audience of a multi-track media per audio language (API 5.55) |
 | `GET /analytics/transfer`, `/storage`, `/encoding`, `/greenhousegas` `/{from}/{to}` | Consumption, including CO₂e |
 | `GET /analytics/catalogs/{from}/{to}` | Catalog duration held, as a daily snapshot |
 | `GET /analytics/company/billable` | Consumption since the start of the contractual term, against the allowance |
@@ -192,13 +198,41 @@ Asking one of them for `subtotal` answers `400` with `INVALID_AGGREGATION`. Note
 `playback` report takes it — the narrower playback breakdowns beside it do not.
 
 Every other analytics endpoint — `viewership`, `medias`, `tokenstats`, the two `top/*`,
-`userstats`, `live/streams`, `engagement/{media_id}/connections` and the `company/*` reports — has
-no `aggregation` parameter at all.
+`userstats`, `live/streams`, `engagement/{media_id}/connections`, the three `languages/{media_id}/*`
+and the `company/*` reports — has no `aggregation` parameter at all.
 
 Since API 5.30 the published description of `aggregation` lists only the roll-ups the endpoint it
 sits on actually offers, so it is worth reading per endpoint rather than assumed.
 
-### Three figures that are not what they look like
+### One media, per audio language
+
+From API 5.55, the audience of a multi-track media can be read per audio track, on three reports that share one shape:
+
+| Endpoint | Figure |
+| --- | --- |
+| `GET /analytics/languages/{media_id}/playbacks/{from}/{to}` | Plays, by the track selected when the play was recorded |
+| `GET /analytics/languages/{media_id}/listening/{from}/{to}` | Seconds actually spent on each track, replays counted again |
+| `GET /analytics/languages/{media_id}/transfer/{from}/{to}` | Bytes served for the audio rendition of each language |
+
+The answer is `data.__all__.{date}.{language}` — `[]` when nothing matched — the language being the
+track token (`fr`, `en`, `fr-ad`), at most 30 per bucket, the largest first. The media is the one
+in the path, so there is no company level and no `aggregation`: `__all__` is the only roll-up, and
+`aggregation`, `company_id` or `max_result` answer `400 UNKNOWN_FIELDS`. `period`, `format=csv`
+(columns `date,language,` then `count`, `seconds` or `bytes`) and, on the first two,
+`user_token` apply. A live, or a media of another company, answers `400 INVALID_MEDIAID`.
+
+Two things to build in:
+
+- **`__unknown__` is a bucket, not a track.** It gathers what was recorded before the player sent
+  the language, and the audio files whose name carries none — on a media promoted from single to
+  multi-track, its whole earlier life. Add it to the total and never list it as a language,
+- **your own player feeds these figures only if it sends `l`** on `o.k` and `eng.k` (see the two
+  parameter tables above). Without it, every play of a multi-track media lands under `__unknown__`.
+
+The transfer report reads the language from the file name pulled, so it also counts what a
+third-party player downloads; the two others count only what reported itself.
+
+### Four figures that are not what they look like
 
 - **`data.transfer` in `GET /analytics/company/billable` is a running total.** Each week already
   contains every week before it, and the last entry is your consumption to date. One week alone is
@@ -207,6 +241,15 @@ sits on actually offers, so it is worth reading per endpoint rather than assumed
   be added up,
 - **catalog and storage figures are snapshots**, not amounts added that day. What you grew over a
   week is the difference between its two ends, never a sum,
+- **the transfer breakdown by mode is only complete from the day `modes_complete_from` names.**
+  Every JSON answer of `GET /analytics/transfer/{from}/{to}` carries that day at the root of the
+  response. In a bucket older than it, part of the bytes served for recorded media sits under
+  `other` instead of `vod`, because the stats pipeline did not yet recognise the file names of the
+  v2 encodings. Bucket totals are right at every date, so a consumption or billing total is
+  unaffected; what reads too low is anything built on `vod` and `live` alone — an average bitrate,
+  a volume per playback — by a share that varies from one day to the next. No factor repairs it:
+  over a period that reaches back before that day, derive the figure from the bucket totals, or
+  leave it out,
 - **the engagement ratios of `/analytics/userstats/…` are fractions, not percentages.** `0.0377`
   means 3.77 percent. They are rounded to four decimals, and `viewing_ratio` goes above `1` when a
   viewer replays. In the CSV form the column is headed `percentage`, but the values in it are the
@@ -219,10 +262,41 @@ alike — the body comes back as **`application/vnd.ms-excel`**, never `text/csv
 extension says. Branch on the parameter you sent, not on the content type. The CSV form also drops
 the `companies` metadata block that the JSON form carries.
 
+## Knowing where the plays come from: `utm_source`
+
+Browsers send the page that embeds the player as a referrer, but their default referrer policy
+(`strict-origin-when-cross-origin`) cuts it down to the origin: every play from
+`https://www.example.com/news/article-42` counts as `https://www.example.com/`. Only an iframe carrying `referrerpolicy="unsafe-url"` sends the full
+URL, and few pages do.
+
+Put the information in the player URL instead:
+
+```
+https://cdn.streamlike.com/play?med_id=MEDIA_ID&utm_source=newsletter-october
+```
+
+The value is a label you choose, not necessarily a URL: one per campaign, mailing, partner or page
+family. The player reports it with the playback (`us` in the `o.k` beacon), and the referrer
+statistics grouped by page (the back office, and the API with `referrer_detail=page` below) count
+that play under `utm_source=newsletter-october` instead of the origin. The referrer is still
+recorded; only the grouping changes. Plays without `utm_source` keep the
+referrer. The value is trimmed and cut to 100 characters. Only `utm_source` is read: other UTM
+parameters (`utm_medium`, `utm_campaign`) are ignored.
+
+In the API that grouping is a choice: pass `referrer_detail=page` to
+`GET /analytics/playback/referers/{from}/{to}`. The default, `referrer_detail=full`, returns each
+referrer exactly as the browser sent it, query string included, and does not read `utm_source`, so
+code written against it keeps its figures. With `page`, the entries are pages: the query string
+and the fragment are dropped (one entry per `?fbclid=…` or `?gclid=…` no longer pushes the real
+pages out of the list), the host is lowercased without a trailing dot, a bare origin ends with `/`,
+plays on a page Streamlike serves itself (the player page, the back-office preview, a short link)
+fall under the literal key `__streamlike__`, and plays carrying a `utm_source` fall under
+`utm_source=<label>`.
+
 ## Third-party tracking
 
 Tracking accounts (Google Analytics and others) are configured in the back office and attached to
-medias, so playback events reach your own analytics without any code in your integration. The API
+media, so playback events reach your own analytics without any code in your integration. The API
 manages them under `/trackings` and
 `POST /medias/{media_ids}/actions/integration/tracking`.
 

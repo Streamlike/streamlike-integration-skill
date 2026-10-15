@@ -31,7 +31,7 @@ cp -r integration-skill ~/.claude/skills/streamlike-integration
 cp -r integration-skill .claude/skills/streamlike-integration
 ```
 
-The assistant loads it on its own when a task mentions Streamlike medias, playlists, the player or
+The assistant loads it on its own when a task mentions Streamlike media, playlists, the player or
 the API.
 
 **Anywhere else.** The files are plain Markdown. Point your assistant at `SKILL.md`, or read them

@@ -80,12 +80,9 @@ A media carrying several audio languages is flagged `metadata.global.is_multiple
   replace, rename or promote them — see `references/api.md`. `GET /medias/{media_id}` also returns
   `source.audio_tracks` for a read-only view, on a single media only,
 - per-track management needs a media produced by the current encoding pipeline. To know which
-  medias those are without a call each, read `source.encoding_version` over a listing (API 5.30) —
+  media those are without a call each, read `source.encoding_version` over a listing (API 5.30) —
   `2` is the current pipeline, `1` the legacy one, and an **absent** field means the media publishes
-  nothing yet. `references/api.md` spells out why that absence matters,
-- those endpoints need API 5.30 (`source.audio_tracks` too) and the `multiple_audio` filter
-  webservices 5.20. Check `scripts/openapi_lookup.py show …` against the published description
-  before relying on them: an older server answers `404`, or accepts the filter and ignores it.
+  nothing yet. `references/api.md` spells out why that absence matters.
 
 ## Subtitles and transcripts
 
@@ -115,9 +112,9 @@ JSON you can consume for your own rendering:
 - amplitudes are integers `0..100` spread over the whole duration; `count` mirrors `peaks.length` —
   2000 buckets, fewer only when the source holds fewer samples,
 - `GET /medias/{media_id}` returns the sidecar URL as `peaks.files.index` (API 5.30, encoded audio
-  medias only). The file lives on the media's asset tree, under `…/medias/{media_id}/peaks/peaks.json`,
+  media only). The file lives on the media's asset tree, under `…/medias/{media_id}/peaks/peaks.json`,
 - a multi-track media publishes one sidecar per track, named by track token (`peaks/en.json`,
-  `peaks/en-ad.json`) beside the default `peaks.json`; on medias produced by the current encoding
+  `peaks/en-ad.json`) beside the default `peaks.json`; on media produced by the current encoding
   pipeline, the file index also lists an `audio` array whose entries each carry their `peaks_url`,
 - on a token-protected media the player fetches the sidecar through a tokenized URL, exactly as it
   does for the storyboard mosaic,

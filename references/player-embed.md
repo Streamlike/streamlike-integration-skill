@@ -39,7 +39,7 @@ The iframe has no intrinsic size. Wrap it in a box whose `padding-top` matches t
 ```
 
 16:9 is 56.25%, 2:1 is 50%, 21:9 is 42.85%. The `allow` attribute matters: without `fullscreen` the
-fullscreen button does nothing, without `autoplay` a muted autostart is refused by the browser.
+fullscreen button does nothing, without `autoplay` any autostart, even muted, is refused by the browser.
 
 `setResponsiveIframe()` from `js-streamlike-sdk` does this from a media id, and fetches the ratio
 for you — see `references/js-sdk.md`.
@@ -90,21 +90,55 @@ id:
 | `["speed",1.3]` | Playback rate — below 1 slows down, above 1 speeds up |
 | `["volume",0.5]` | Volume, 0 to 1 |
 
-The player pushes back on the same channel, roughly every 250 ms while playing:
+The player pushes back on the same channel. Each message is a JSON **string** — parse it — whose
+last item is the media id. `sl-progress` comes roughly every 250 ms while playing; `sl-state`
+comes at each transition:
 
 ```js
 window.addEventListener('message', (evt) => {
-  // ["sl-progress", 24.363924]  – current position in seconds
-  // ["sl-state", "play"]        – "play" | "pause" | "ended"
-  console.log(evt.data);
+  if (evt.source !== player.contentWindow) return; // only this iframe
+  const [type, value, mediaId] = JSON.parse(evt.data);
+  // ["sl-progress", 24.363924, "MEDIA_ID"]  – current position in seconds
+  // ["sl-state", "play", "MEDIA_ID"]        – see the table below
+  console.log(type, value, mediaId);
 });
 ```
 
+| `sl-state` value | When |
+| --- | --- |
+| `ready` | A source is loaded and can play |
+| `play` / `pause` | Playback starts / pauses |
+| `ended` | A recorded media reached its end |
+| `live-pending` | The live has not started yet. A state, not a one-shot event: see below |
+| `live-waiting` | The live was flowing and its segments stopped. The player shows the cover and waits |
+| `live-resumed` | The segments are back. Followed by `play` when playback restarts on its own |
+| `live-ended` | The live is over. Sent once by the player |
+
+The live states, in detail:
+
+- **`live-pending` repeats.** Before the live starts, the iframe shows a waiting room that
+  reloads every `live_wait` seconds (15 by default), and every reload posts `live-pending`
+  again. Treat it as "still not started", not as a new event. With `live_wait=0` there is no
+  waiting room: the player loads at once and posts `live-pending` itself,
+- **the waiting room posts only when `events=1` (or `true`) and the page sits inside an
+  iframe.** If it is reached for a live already over, it posts `live-ended` instead — at each
+  reload, like `live-pending`,
+- **`live-waiting` is not a pause.** No `pause` is sent when the segments stop, and the `ready`
+  of the reloads that probe the live behind the cover are not sent either, until the next
+  `play`,
+- **`live-resumed` is not final either.** If playback has not restarted 20 seconds after it, the
+  player puts the cover back and posts `live-waiting` again, then `live-resumed` once the stream
+  really flows. Treat `sl-state` as a current state, the last message wins, not as a series of
+  one-off events,
+- **`live-ended` is final.** It is never followed by `pause` nor `ended`: `ended` stays the end
+  of a recorded media, the signal you chain on.
+
 Three practical notes:
 
-- filter on the origin (`evt.origin`) before trusting a message: your page will receive messages
-  from other frames too,
-- `sl-state` is how you detect the end of a media to chain the next one,
+- check where a message comes from (`evt.source`, or `evt.origin`) before trusting it: your page
+  will receive messages from other frames too,
+- `sl-state` `ended` is how you detect the end of a media to chain the next one; on a live, wait
+  for `live-ended`,
 - the iframe is cross-origin. You cannot read its DOM, and a click inside it sends keystrokes to
   the player, not to your page — keyboard shortcuts bound on your page stop working once the
   viewer has clicked the video.
@@ -155,7 +189,7 @@ Streamout (scheduled broadcast).
 | --- | --- | --- | --- | --- | --- |
 | `active_color` | RRGGBB | Changes the color of all the player's "active" elements (progress bar, active buttons, etc.). Takes an HTML color without the #. E.g. FF01F8 | - | yes | no |
 | `audio_lng` | language code | Forces the audio track language. The -ad suffix targets the language's audio description: audio_lng=en-ad | - | no | no |
-| `autostart` | bool | Automatic media start | 0 | yes | no |
+| `autostart` | bool | Automatic media start, with sound when the browser allows it, muted otherwise (see "Choosing parameters that matter") | 0 | yes | no |
 | `background_audio` | bool | Switches to the lowest quality available if a video is playing but not visible | 0 | yes | yes |
 | `background_color` | RRGGBB | Changes the background color behind the video and the poster. Takes an HTML color without the #. E.g. FF01F8 | - | yes | yes |
 | `background_opacity` | integer | Only in combination with a background_color. Overrides the opacity setting of the background color. 0: transparent, 100: opaque | 100 | yes | no |
@@ -178,6 +212,7 @@ Streamout (scheduled broadcast).
 | `landing` | bool | Shows the clickable cover image and a logo in place of the player. The player is loaded after clicking the image. | 0 | no | no |
 | `live_dvr` | bool | Accepted for compatibility; the current player does not read it. The rewind window comes from the live itself: about 45 minutes when it was created with live[dvr]=true, about 100 seconds otherwise (API default: false since API 5.30) | 1 | yes | no |
 | `live_id` | string | Identifier of the live or "stream name" | - | yes | no |
+| `live_wait` | integer | Seconds between two reloads of the waiting room shown before a live starts. 0: no waiting room, the player loads at once and waits for the stream itself | 15 | yes | no |
 | `logo` | bool | Whether to show the logo | 1 | yes | yes |
 | `logo_alpha` | 0-100 | Overrides the transparency setting, only if the logo is defined from a logo_url parameter | 100 | yes | yes |
 | `logo_id` | integer | applies the logo referenced by the ID | - | yes | yes |
@@ -189,7 +224,7 @@ Streamout (scheduled broadcast).
 | `max_width` | integer | Sets a width limit on the transcodes made available for adaptive streaming. Combined with inline_throttling, the strictest rule prevails | - | yes | yes |
 | `med_id` | string | encrypted media_id | - | no | no |
 | `mosaic` | bool | Shows or disables the mosaic | 1 | no | no |
-| `muted` | bool | Mutes the media | 0 | yes | yes |
+| `muted` | bool | Starts the media muted. With `autostart=1`, guarantees a silent start instead of the sound attempt | 0 | yes | yes |
 | `nometa` | bool | No meta tag in the head (title, descriptions, keywords, og, etc.) | 0 | yes | yes |
 | `nosharemeta` | bool | Disables the social sharing meta tags (included in nometa) | 0 | yes | yes |
 | `nowplaying` | bool | Adds a clickable button to show the number of ongoing playbacks | 0 | yes | no |
@@ -221,14 +256,18 @@ Streamout (scheduled broadcast).
 | `timecode` | string | Position where the video should start. Accepted formats: hh:mm:ss.000 or shorter | 0 | no | no |
 | `tv` | bool | Removes the controls and the play button and forces automatic playback. Interactions stay visible but are not clickable. Default and non-editable setting for a streamout | 0 | yes | no |
 | `user_token` | string(64) | Identifies a specific user by permanently assigning them the same token | - | yes | yes |
+| `utm_source` | string | Your own label for where the traffic comes from (a newsletter, a campaign, a partner site), e.g. utm_source=newsletter-october. Reported with the playback and shown in the referrer statistics instead of the referring page, which browsers usually cut down to its origin. Free text, trimmed, first 100 characters kept | - | yes | yes |
 | `volume` | float | Volume setting from 0.0 to 1.0 | 1.0 | yes | yes |
-| `waveform` | bool | Audio medias: shows the interactive waveform skin drawn from the media's sound. `0` restores the cover display, `1` forces the skin on a media that carries an uploaded cover. No effect when the media has no peaks file (see below) | 1 | no | no |
+| `waveform` | bool | Audio media: shows the interactive waveform skin drawn from the media's sound. `0` restores the cover display, `1` forces the skin on a media that carries an uploaded cover. No effect when the media has no peaks file (see below) | 1 | no | no |
 | `waveform_color` | RRGGBB | Accent color of the waveform; the background shade is derived from it. Takes an HTML color without the #. E.g. FF01F8 | 44B0A7 | no | no |
 
 ## Choosing parameters that matter
 
-- **Autoplay**: browsers only allow it muted. `autostart=1&muted=1` is the working pair; the viewer
-  unmutes,
+- **Autoplay**: `autostart=1` tries to start with sound, and falls back to a muted start when the
+  browser refuses — no prior interaction with your site, a low engagement score. Whether sound is
+  allowed is the browser's call, not yours; the fallback keeps the picture moving either way. Add
+  `muted=1` when you want a silent start whatever the browser would have allowed: a feed of cards,
+  a screen wall, a preview. The `<iframe>` needs `allow="autoplay"` in both cases,
 - **Bandwidth**: `max_width` / `max_height` cap the renditions offered, `inline_throttling` caps
   the bitrate outside fullscreen, and the strictest rule wins, on both engines. Useful on mobile
   data or a constrained corporate network. In Safari for macOS a capped media is served by `hlsjs`
@@ -244,7 +283,7 @@ Streamout (scheduled broadcast).
   engagement possible — see `references/analytics.md`,
 - **`tv=1`** strips the controls and forces playback, the signage mode.
 
-## The waveform skin on audio medias
+## The waveform skin on audio media
 
 An audio media whose encoding produced a peaks file plays under a SoundCloud-like waveform instead
 of its cover: the wave draws the sound, a click or a drag on it seeks. Nothing to enable — the

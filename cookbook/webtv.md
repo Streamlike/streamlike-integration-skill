@@ -1,16 +1,16 @@
 # A WebTV or video portal
 
-A site whose pages are playlists and medias: browse, search, watch, and be found by search engines.
+A site whose pages are playlists and media: browse, search, watch, and be found by search engines.
 
 ## The fast route
 
 `generatePlaylistPlayer` from `js-streamlike-sdk` already is a WebTV page — player, list, paging,
-information panel, shareable timecoded links, restricted medias handled:
+information panel, shareable timecoded links, restricted media handled:
 
 ```html
 <div id="channel"></div>
 <script type="module">
-  import { generatePlaylistPlayer } from 'https://cdn.jsdelivr.net/npm/js-streamlike-sdk@3.8.0/dist/index.mjs';
+  import { generatePlaylistPlayer } from 'https://cdn.jsdelivr.net/npm/js-streamlike-sdk@3.10.0/dist/index.mjs';
   await generatePlaylistPlayer('channel', {
     playlistId: 'PLAYLIST_ID',
     listPosition: 'right',
@@ -31,7 +31,7 @@ of playlists and can be used in place of a `playlist_id` in most services — th
 slice of the catalog to one site.
 
 **A channel page.** `/ws/playlist?playlist_id=…&pagesize=12&page=0&orderby=position` returns the
-medias with everything a card needs: `name`, `duration`, `ratio`,
+media with everything a card needs: `name`, `duration`, `ratio`,
 `customization.cover.thumbnaillarge_url`, `permalink`. Give the card a placeholder cover: a media
 without a poster has no `customization.cover` object at all, and neither has one whose encoding is
 still running. Paginate on `metadata.size`, which is always there — the `medias` key is not.
@@ -44,7 +44,7 @@ where nobody filled them in, and it never returns a live nor a media that is not
 Available fields: `id`, `name`, `description`, `credits`, `keywords`, `customs`, `transcription`,
 `permalink`, `subtitle` — searching `transcription` and `subtitle` finds spoken words inside
 videos, which is usually the feature people are impressed by. The matching excerpts come back in
-`metadata.highlight` on the medias that matched, with the words wrapped in `<em>` — that is what
+`metadata.highlight` on the media that matched, with the words wrapped in `<em>` — that is what
 turns a result list into a useful one, and what lets you deep-link to a timecode when a subtitle
 matched. **Stay in JSON when you search on a server older than webservices 5.20**: the excerpts
 came out under element names XML does not allow, and the document you got back with `query` and
@@ -52,7 +52,7 @@ came out under element names XML does not allow, and the document you got back w
 
 **Languages and countries.** `/ws/languages` and `/ws/countries` build filters that only offer
 values the catalog actually has. Watch the case — `languages` answers `fr`, `countries` answers
-`FR` — and note that both count encoded medias whatever their visibility, so they describe the
+`FR` — and note that both count encoded media whatever their visibility, so they describe the
 catalog rather than what a visitor can watch today.
 
 ## Caching
@@ -70,7 +70,7 @@ and media responses is usually enough, with a purge when you publish.
   missing profile answers `<error>No profile exists</error>` with a `200`, and a pipeline that only
   looks at the status code publishes an empty sitemap,
 - **oEmbed**: `https://cdn.streamlike.com/oembed?url=…&format=json` gives other sites a clean way to
-  embed your medias,
+  embed your media,
 - **mRSS and podcast feeds** for syndication and podcast directories,
 - let the player emit its own metadata (leave `nometa` off) so shared links unfurl with a title and
   a thumbnail.

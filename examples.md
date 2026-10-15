@@ -7,10 +7,10 @@ your code rather than from the platform.
 | What | Value |
 | --- | --- |
 | Media | `9dd61d7f5e077fdb` — "Streamlike motion design presentation", 75 s, 16:9 |
-| Playlist | `7e0b55bbd4bd0a91` — "Films Streamlike", 51 medias |
-| Multi-track media | `de342d715dbb4ce9` — two audio tracks, French and English subtitles |
+| Playlist | `7e0b55bbd4bd0a91` — "Films Streamlike", 51 media |
+| Multi-track media | `4402e821e35336c5` — French and English audio tracks, French and English subtitles |
 
-These are public, unprotected medias. The demo account's `company_id` is deliberately not published
+These are public, unprotected media. The demo account's `company_id` is deliberately not published
 here: it addresses a whole catalog, and the services that need one work the same with yours.
 
 ## Read a media
@@ -81,13 +81,14 @@ curl -s "https://cdn.streamlike.com/ws/related?media_id=9dd61d7f5e077fdb" | jq -
 ## Walk a playlist
 
 ```bash
-# first page — remember: `page` is an offset
-curl -s "https://cdn.streamlike.com/ws/playlist?playlist_id=7e0b55bbd4bd0a91&pagesize=5&page=0" \
+# first page — `offset` is the rank of the first item, counted from 0, not a page number.
+# `page` is its deprecated name and still works
+curl -s "https://cdn.streamlike.com/ws/playlist?playlist_id=7e0b55bbd4bd0a91&pagesize=5&offset=0" \
   | jq '{size: .playlist.metadata.size,
          items: [.playlist.medias[].media.metadata.global | {media_id, name}]}'
 
 # next page
-curl -s "https://cdn.streamlike.com/ws/playlist?playlist_id=7e0b55bbd4bd0a91&pagesize=5&page=5" | jq .
+curl -s "https://cdn.streamlike.com/ws/playlist?playlist_id=7e0b55bbd4bd0a91&pagesize=5&offset=5" | jq .
 
 # sorted by name, descending — `down`, not `desc`
 curl -s "https://cdn.streamlike.com/ws/playlist?playlist_id=7e0b55bbd4bd0a91&pagesize=5&orderby=name&sortorder=down" | jq .
@@ -95,7 +96,7 @@ curl -s "https://cdn.streamlike.com/ws/playlist?playlist_id=7e0b55bbd4bd0a91&pag
 # search inside titles, descriptions and spoken words
 curl -s "https://cdn.streamlike.com/ws/playlist?playlist_id=7e0b55bbd4bd0a91&query=live&search_fields%5B%5D=name&search_fields%5B%5D=transcription" | jq .
 
-# the matching excerpts, on the medias that matched
+# the matching excerpts, on the media that matched
 curl -s "https://cdn.streamlike.com/ws/playlist?playlist_id=7e0b55bbd4bd0a91&query=live&pagesize=1" \
   | jq -c '.playlist.medias[0].media.metadata.highlight | keys'
 # ["description.stemmed","keywords.name","keywords.name.keyword","keywords.name.stemmed",
@@ -137,10 +138,10 @@ parser error : StartTag: invalid element name
 …<highlight><keywords.name.keyword><0><![CDATA[<em>live</em>]]></0>…
 ```
 
-Run it against the server you actually call before relying on XML with a `query`: the fix ships
-with the webservices, and a given platform may not carry it yet.
+Production serves webservices 5.25, so the call parses; the older failure is kept here so that you
+recognise it if an XML client of yours was written around it.
 
-## Related medias, live viewers
+## Related media, live viewers
 
 ```bash
 curl -s "https://cdn.streamlike.com/ws/related?media_id=9dd61d7f5e077fdb&pagesize=3" \
@@ -159,21 +160,22 @@ never returns a live nor a media that is not encoded.
 ## A media with several audio tracks
 
 ```bash
-curl -s "https://cdn.streamlike.com/ws/media?media_id=de342d715dbb4ce9" \
+curl -s "https://cdn.streamlike.com/ws/media?media_id=4402e821e35336c5" \
   | jq '{multi: .media.metadata.global.is_multiple_audio,
+         encoding_version: .media.metadata.global.encoding_version,
          subtitles: [.media.metadata.subtitles[].subtitle.language_id]}'
-# {"multi": true, "subtitles": ["fr", "en"]}
+# {"multi": true, "encoding_version": 2, "subtitles": ["fr", "en"]}
 ```
 
-The `multiple_audio` filter of `/ws/playlist` reaches the same result on a whole playlist, once
-webservices 5.20 is deployed — today the parameter is accepted and ignored.
-
+The `multiple_audio` filter of `/ws/playlist` reaches the same result on a whole playlist:
+`multiple_audio=1` keeps the multi-track media only. The demo playlist holds none, so on it the
+answer carries `"size": 0` and no `medias` key at all.
 
 Force a track, or its audio description, in the player:
 
 ```
-https://cdn.streamlike.com/play?med_id=de342d715dbb4ce9&audio_lng=en
-https://cdn.streamlike.com/play?med_id=de342d715dbb4ce9&subtitle=fr
+https://cdn.streamlike.com/play?med_id=4402e821e35336c5&audio_lng=en
+https://cdn.streamlike.com/play?med_id=4402e821e35336c5&subtitle=fr
 ```
 
 ## Embed the player
@@ -190,6 +192,7 @@ Open it directly to try parameters:
 
 ```
 https://cdn.streamlike.com/play?med_id=9dd61d7f5e077fdb
+https://cdn.streamlike.com/play?permalink=streamlike-motion-design-presentation-1770224042617&autostart=1
 https://cdn.streamlike.com/play?permalink=streamlike-motion-design-presentation-1770224042617&autostart=1&muted=1
 https://cdn.streamlike.com/play?med_id=9dd61d7f5e077fdb&interface=0&play_button=0
 https://cdn.streamlike.com/play?med_id=9dd61d7f5e077fdb&active_color=cc0000&icons_position=left
@@ -251,7 +254,7 @@ Save as an `.html` file and open it — no build step, no account needed:
 <title>Streamlike SDK demo</title>
 <div id="channel" style="max-width:960px;margin:2rem auto"></div>
 <script type="module">
-  import { generatePlaylistPlayer } from 'https://cdn.jsdelivr.net/npm/js-streamlike-sdk@3.8.0/dist/index.mjs';
+  import { generatePlaylistPlayer } from 'https://cdn.jsdelivr.net/npm/js-streamlike-sdk@3.10.0/dist/index.mjs';
 
   const controller = await generatePlaylistPlayer('channel', {
     playlistId: '7e0b55bbd4bd0a91',

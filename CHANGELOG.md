@@ -7,6 +7,178 @@ patch for corrections that change nothing you would have written differently.
 The same version is published to both distributions — the Claude skill and the Gemini gem — from
 the same source.
 
+## 5.9.0 — 2026-10-15
+
+**Everything the skill described ahead of production is now served there** (API 5.66, webservices
+5.25, the current player). The "not in production yet" caveats are gone from `references/api.md`,
+`references/webservices.md`, `references/analytics.md`, `references/player-embed.md` and
+`references/playback.md`: archived media in the webservices, the per-language audience reports,
+`referrer_detail=page`, the `live-*` states, the waveform. The runnable examples and the mobile
+feed recipe page with `offset` instead of `page`.
+
+**Synthetic-voice dubbing** (`references/api.md`, new section "Synthetic-voice dubbing"). The flow
+from `GET /medias/{media_id}/dubbing/context` to `POST …/dubbings/{lang}/publish`, the line
+corrections, the states, the credit counted in hours of media per language, and the refusals an
+integration must expect (`INVALID_COMPANY_OPTIONS`, `INVALID_MEDIA_MONO_AUDIO`,
+`DUBBING_CREDIT_EXHAUSTED`, `NOTHING_TO_PUBLISH`).
+
+**Audio tracks: `flatten`, and what blocks a write right now** (`references/api.md`, "Audio tracks
+and video replacement"). `POST /medias/{media_id}/audio-tracks/flatten` brings a multi-track media
+back to one languageless audio, and destroys every declared track doing so. `GET
+/medias/{media_id}/audio-tracks` answers `flattenable`, `blocked_by` and `blocked`: whether a write
+may run now, and every action the media refuses with its reason.
+
+**Audio versions of a video** (`references/api.md`, same section). `POST
+/medias/{media_ids}/actions/audio/generate` makes one audio media per language track of a video,
+idempotent, without carrying the video's access rights over.
+
+**`format[]` on `/ws/playlist`** (`references/webservices.md`, parameter table;
+`cookbook/mobile-feed-app.md`). `portrait`, `square`, `landscape`, read from the ratio: a reels-style
+feed keeps vertical videos with `format[]=portrait`.
+
+**FTP: a file written to in the last minute is still uploading** (`references/api.md`, "Uploading
+files"). `GET /ftp/files` leaves it out and `media_ftp_filename` refuses it; wait a minute after
+the upload ends.
+
+**The multi-track example is a current-pipeline media** (`examples.md`). `4402e821e35336c5`
+replaces `de342d715dbb4ce9`, which the platform no longer reports as multi-track.
+
+**JS SDK 3.10.0** (`references/js-sdk.md`, `examples.md`, `cookbook/webtv.md`). The pinned version
+moves up, and the transcript section says that the words file is now an object `{source, language,
+words}`, older files a bare list: `generateWords` reads both from 3.9.0, your own code must too.
+
+Minor: surface added, nothing an existing integration relies on changes meaning.
+
+## 5.8.0 — 2026-10-12
+
+**Paging is by `offset`, `page` is deprecated** (`references/webservices.md`, "Paging and sorting —
+read this before writing a loop" and the `playlist` parameter table; `references/feeds.md`;
+`examples.md`, "Walk a playlist"; `cookbook/mobile-feed-app.md`).
+Webservices 5.25: `offset` on `playlist`, `playlists`, `related` and `rss`, the rank of the first
+item returned, counted from 0. `page` was always that same offset under a misleading name — which
+is what made assistants write `page=2` for the second page — and keeps working, deprecated; sent
+together, `offset` wins. 5.25 is not in production yet, and an unknown parameter is ignored there
+rather than refused, so the runnable examples still send `page` and the pages say when to switch.
+Minor because it is surface added: an integration sending `page` is unaffected.
+
+**Front ends read the webservices, the API is for writes and protected data** (`SKILL.md`, "Pick
+the door before writing code"; the opening of `references/webservices.md` and `references/api.md`).
+The rule was there in one line; it now says why and where the line falls. A page view or an app
+screen reads `/ws/*`, cached on your side; the API is kept for writes, administration, analytics
+and what a visitor must not reach, such as playback tokens. A backend that proxies API reads to its
+pages makes the same mistake one hop further, and is now named as such. Minor, because an
+integration built on API reads for its catalog pages would be written differently.
+
+## 5.7.1 — 2026-10-11
+
+**A restricted key passes its limits on** (`references/api.md`, "Restricting a key to a few
+roles" and the session token paragraph). A session token asked for with a restricted key carries
+the same list and ends no later than the key; a key created by a restricted key without `roles`
+takes its list; no key it writes ends after it; an `ftp` key needs `FTP_ACCESS` in its list; and
+`PATCH /me` refuses it a new password or two-factor phone number with `403`. Patch, because nothing
+you would have written changes: a restricted key was never meant to buy a wider one.
+A session token also dies with the key that asked for it: `DELETE /me/keys/{id}` revokes the
+session tokens the key opened, renewals included.
+
+## 5.7.0 — 2026-10-09
+
+**Where the plays come from, by your own label** (`references/analytics.md`, the new "Knowing where
+the plays come from: `utm_source`", and the parameter table of `references/player-embed.md`). Browsers
+cut the referrer down to the origin of the embedding page; `utm_source=<label>` on the player URL
+reaches the statistics whole. The player sends it as `us` in the `o.k` beacon (documented for a
+player of your own), and the referrer statistics group those plays under `utm_source=<label>`
+instead of the origin. The player release is not in production yet; the page says so. Minor
+because it is surface added: an embed without `utm_source` counts as before.
+
+**Referrers grouped by page** (same section of `references/analytics.md`): `referrer_detail=page`
+on `/analytics/playback/referers` drops query strings and fragments, folds Streamlike's own pages
+under `__streamlike__` and the plays carrying a `utm_source` under `utm_source=<label>`. The
+default, `referrer_detail=full`, answers as before.
+
+## 5.6.0 — 2026-10-07
+
+**A live tells the host page where it stands** (`references/player-embed.md`, "Controlling the
+player from the page"). With `events=1`, `sl-state` gains four values on a live: `live-pending`
+(not started yet — repeated at every reload of the waiting room, so a state rather than an event),
+`live-waiting` (the segments stopped and the player holds on the cover; no `pause` is sent),
+`live-resumed` (the segments are back, followed by `play` when playback restarts on its own; if
+playback has not restarted 20 seconds later, `live-waiting` comes again, so the last state
+received is the one that holds) and `live-ended` (the live is over, sent once, never followed by
+`pause` nor `ended`). The waiting room posts only when the page sits inside an iframe. The page
+now also lists `ready`, shows that every message is a JSON string ending with the media id, and
+documents the `live_wait` parameter that paces the waiting room (15 seconds, 0 for none). `ended` keeps its meaning: the end of a recorded
+media, the one to chain on. The player release is not in production yet; the page says so. Minor
+because it is surface added: a page that ignores unknown states loses nothing it had.
+
+## 5.5.0 — 2026-10-04
+
+**The audience of a multi-track media, per audio language** (`references/analytics.md`, "Counting a
+playback from your own player", "Reporting engagement from your own player" and the new "One media,
+per audio language"). API 5.55: `GET /analytics/languages/{media_id}/playbacks/{from}/{to}`,
+`…/listening/{from}/{to}` and `…/transfer/{from}/{to}` answer, for one recorded media, the plays,
+the seconds listened and the bytes served per audio track, as `data.__all__.{date}.{language}`,
+with the literal `__unknown__` gathering what predates the tracking or carries no language. The two
+beacons gain an optional `l` — the track token heard — which is what feeds the first two reports
+from a player of your own; a change of track ends the current `eng.k` segment. The version is not in
+production yet; the page says so. Minor because it is surface added: an integration that sends no
+`l` loses nothing it had.
+
+## 5.4.0 — 2026-09-26
+
+**Several subtitle languages in one call** (`references/api.md`, "Writes are asynchronous and
+exclusive"; `cookbook/server-ingest.md`). API 5.45: `POST /medias/{media_ids}/actions/speechtotext`
+takes `speech_to_text[languages][]`, a list of target languages, alongside
+`automatic_translation: true` — one subtitle set per language, produced one after the other in the
+order given, twenty at most. A media still runs one speech-to-text at a time, so nothing goes
+faster; what disappears is the loop that polled the pipeline to post the next language when the
+previous one ended. A translation posted while a queue runs now joins it instead of being refused,
+and `GET /medias/{media_id}?fields[]=availability` reports one `SPEECH_TO_TEXT` operation per
+language with `step: "queued"` on those still waiting. The page also states what was already true
+and unwritten: a second transcription on a busy media answers `400
+INVALID_MEDIA_SPEECHTOTEXT_RUNNING`. Minor because an integration that looped over its languages
+can now say them all at once.
+
+## 5.3.0 — 2026-09-24
+
+**An archived media can reach the webservices** (`references/api.md`, "Archived media in the
+webservices"; `references/webservices.md`, "Reading a response — the rules that hold everywhere"
+and the `media` field list). API 5.41: the `media_archived_in_ws` company preference
+(`GET`/`POST`/`PATCH /companies/preferences`, off by default) includes archived media in the
+`media`, `playlist`, `related` and `rss` webservices instead of hiding them, `status` then reading
+`archived` (webservices 5.23 honors it). Off by default, nothing changes for an existing
+integration. Neither version is in production yet — the pages say so and name what to check.
+Minor because it is surface added, not a rule that changes meaning.
+
+## 5.2.0 — 2026-09-23
+
+**The transfer report says from which day its breakdown by mode is complete**
+(`references/analytics.md`, "Four figures that are not what they look like"). API 5.40: every JSON
+answer of `GET /analytics/transfer/{from}/{to}` carries a `modes_complete_from` field. In a bucket
+older than that day, part of the bytes served for recorded media sits under `other` instead of
+`vod`, so a figure built on the `vod` and `live` modes alone — an average bitrate, a volume per
+playback — reads too low, by a share that varies from one day to the next. Bucket totals are right
+at every date. Minor because an integration that computed such a figure now has a field telling it
+which periods that computation holds for.
+
+## 5.1.0 — 2026-09-21
+
+**A media without speech ends its transcription `done`, and `jobs.outcome` says `no_speech`**
+(`references/api.md`, "The transcription dictionary"). API 5.38: when the engine finds no speech in
+the audio, the `speechtotext` job produces no track and the pipeline no longer ends in `error`;
+the job carries `outcome: "no_speech"` on `GET /pipelines` and `GET /pipelines/{pipeline_id}`,
+`null` otherwise and on every other job type. Minor because an integration that watched the
+pipeline state to detect such a media now has a field to read instead.
+
+## 5.0.0 — 2026-09-21
+
+**`autostart=1` starts with sound when the browser allows it** (`references/player-embed.md`,
+"Choosing parameters that matter"). The player tries a sounded start first and falls back to a
+muted one only when the browser refuses — no prior interaction with your site, a low engagement
+score. Until now every autostart was muted by the platform, whatever the browser would have
+allowed and whatever `muted` said. `autostart=1&muted=1` keeps its meaning — a silent start,
+guaranteed — and is still the right pair for a feed, a screen wall or a preview. Major because an
+embed that relies on `autostart=1` alone for a silent start now has to say `muted=1`.
+
 ## 4.6.0 — 2026-09-16
 
 **The player sizes its controls to the screen, and a skin sets the base** (`references/player-embed.md`,
@@ -22,7 +194,7 @@ for an embed that sets nothing.
 
 **Custom fields can be typed, and sorted on** (API 5.34, webservices 5.21). The names your company
 uses are declared in one catalogue, `GET /medias/customfields`, and each entry now carries two
-options that govern the custom fields of your medias and of your playlists alike.
+options that govern the custom fields of your media and of your playlists alike.
 
 `type` checks what may be written under a name — `number`, `boolean` (`true`, `false`, `1`, `0`),
 `json`, or nothing, which keeps taking any text as before. A value that does not match answers
@@ -65,7 +237,7 @@ stop doing so. `references/api.md`, « Uploading files ».
 `POST /medias/{media_ids}/actions/…` and the hibernation actions accept; the reference now says
 what always held: the ids travel in the request line, the front caps it at 8 kB, so a call stays
 under 400 ids and a larger batch is split into several calls. Past the cap the answer is the
-front's `414`, not an API error. If your integration tags or unpublishes thousands of medias in
+front's `414`, not an API error. If your integration tags or unpublishes thousands of media in
 one call, it has been failing silently on the biggest ones — page the ids.
 
 ## 4.3.1 — 2026-09-09
@@ -126,7 +298,7 @@ nobody touched since still serves the old list. `references/webservices.md` desc
 
 **A streamout owned by another company can no longer be edited or deleted** (API 5.30). A token
 holding `STREAMOUT_ALL` used to read *and* write every company's streamouts; the second barrier
-the medias have always had was simply missing from the controller. `POST`, `PATCH` and `DELETE`
+the media have always had was simply missing from the controller. `POST`, `PATCH` and `DELETE`
 on `/streamouts/{streamout_id}` now answer `404` when the streamout is not yours, the same way
 the equivalent call on a media always has. Reading is untouched, and so is `POST /streamouts`: a
 streamout is born in its creator's company and no field exposes the company. If you built a tool
@@ -255,10 +427,10 @@ receive.
   is stored and applies to the *next* encoding of that media. Nothing is re-queued behind your
   back and the files being served do not change. This was already true and stays true; it is
   written down now because the setting having an effect makes the question worth asking,
-- **Bitrates reported for medias on the current pipeline are measured, not nominal.** They used to
+- **Bitrates reported for media on the current pipeline are measured, not nominal.** They used to
   come from a table keyed on resolution; they are now what the encode actually spent. A simple
   screencast can report a small fraction of what a comparable media reported before — same
-  picture, truer number. Nothing to change unless you compare bitrates across medias encoded
+  picture, truer number. Nothing to change unless you compare bitrates across media encoded
   before and after.
 
 ## 2.4.0 — 2026-08-26
@@ -306,7 +478,7 @@ in the API (5.30, and the same parameter on `GET /lives` and `GET /analytics/med
 listing "cannot be restricted on it" and `references/webservices.md` said it was "a parameter
 nowhere"; both now describe the parameter. Sorting a catalog by pipeline client side is no longer
 the only way. A media that publishes nothing is returned by neither value, so asking for `1` and
-`2` and adding them up gives you fewer medias than the unfiltered listing.
+`2` and adding them up gives you fewer media than the unfiltered listing.
 
 ## 2.3.0 — 2026-08-26
 
@@ -385,14 +557,14 @@ webservices 5.20):
   spell it out,
 - what it replaces: `GET /medias/{media_id}/audio-tracks` and its `encoding_v2` flag, one call per
   media. A whole catalog now sorts itself in a single listing call. It is **read only**, and it is
-  a **parameter nowhere**: neither surface can filter a listing on it, so read it off the medias
+  a **parameter nowhere**: neither surface can filter a listing on it, so read it off the media
   you already asked for and sort them yourself,
 - `is_multiple_audio` is unchanged on both sides — it has been there since the multitrack release
   and this version adds nothing to it.
 
 Catching up on API 5.30, released without a skill update:
 
-- **`waveform_cover_count`** on `GET /companies/preferences`: how many audio medias of the account
+- **`waveform_cover_count`** on `GET /companies/preferences`: how many audio media of the account
   carry a cover generated from the waveform, hence get redrawn in the background the next time
   `waveform_color` changes. Absent when the count is zero, read only, and served on that endpoint
   alone: `references/api.md`,
@@ -406,9 +578,9 @@ of these fields.
 
 ## 2.1.0 — 2026-08-25
 
-Audio medias gain a waveform skin in the player, and the data behind it is public:
+Audio media gain a waveform skin in the player, and the data behind it is public:
 
-- the player displays an interactive waveform on audio medias that carry a peaks file — click or
+- the player displays an interactive waveform on audio media that carry a peaks file — click or
   drag seeks, the cover comes back with `waveform=0`. Two new player parameters, `waveform` and
   `waveform_color`, and two CSS custom properties control it: `references/player-embed.md`,
 - the peaks sidecar (`peaks/peaks.json`, one `{track}.json` per audio track) is plain public JSON
@@ -423,7 +595,7 @@ OpenAPI description before relying on the API fields.
 
 **`forceplaylist` changes meaning on the `playlist` webservice** (webservices 5.20). It read
 its numeric values inverted — `0` turned the filter on, `1` turned it off. They now mean what
-they say: `1` and `true` keep only the medias filed in at least one playlist, `0` and `false`
+they say: `1` and `true` keep only the media filed in at least one playlist, `0` and `false`
 do not filter.
 
 Sending `true` or `false` changes nothing for you. Sending `0` or `1` **changes your result**:
@@ -434,7 +606,7 @@ change on a public endpoint, hence the major digit.
 ## 1.2.0 — 2026-08-23
 
 - **`forceplaylist` was described wrongly.** It does not keep the playlist order over the
-  requested sorting; it keeps only the medias filed in at least one playlist. And its legacy
+  requested sorting; it keeps only the media filed in at least one playlist. And its legacy
   numeric values are inverted — `0` turns the filter on, `1` turns it off. Send `true` or
   `false`. If you set `forceplaylist=1` expecting an ordering, you were getting neither.
 - Every parameter of every webservice now carries a description in the published description

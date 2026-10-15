@@ -53,9 +53,10 @@ app.get('/feed', async (req, res) => {
   const url = new URL('https://cdn.streamlike.com/ws/playlist');
   url.searchParams.set('playlist_id', process.env.SL_PLAYLIST_ID);
   url.searchParams.set('pagesize', String(pageSize));
-  url.searchParams.set('page', String(offset));   // an offset, not a page number
+  url.searchParams.set('offset', String(offset)); // the rank of the first item, not a page number
   url.searchParams.set('orderby', 'position');
-  url.searchParams.set('encoded', '1');           // skip medias still encoding
+  url.searchParams.set('encoded', '1');           // skip media still encoding
+  // a vertical, reels-style feed: url.searchParams.append('format[]', 'portrait');
   url.searchParams.set('f', 'json');
 
   // small dismissal lists can be pushed down to the platform
@@ -105,15 +106,15 @@ Four details that bite:
 ```
 https://cdn.streamlike.com/play?med_id=MEDIA_ID
   &pid=PLAYER_CONFIG_ID      // colours, logo, controls — set once in the back office
-  &autostart=1&muted=1       // the only autoplay browsers allow
+  &autostart=1&muted=1       // silent start, whatever the browser would allow
   &events=1                  // lets your page drive it
   &user_token=USER_TOKEN     // ties playback to this viewer
   &fill_browser=1            // fills the card, cropping rather than distorting
 ```
 
 Everything is reported for you: playbacks, engagement, resume points. Drive the visible card with
-`postMessage(['play'])` / `['pause']`, and listen for `["sl-state","ended"]` to advance — see
-`references/player-embed.md`.
+`postMessage(['play'])` / `['pause']`, and advance when the parsed message is
+`["sl-state", "ended", MEDIA_ID]` — see `references/player-embed.md`.
 
 Pause the cards that scroll off screen. A dozen iframes all playing will saturate the device and
 the connection, and will count as a dozen playbacks.
@@ -121,7 +122,7 @@ the connection, and will count as a dozen playbacks.
 **Native player, the long path.** `ExoPlayer` or `AVPlayer` on the HLS master, which
 `references/playback.md` explains how to find. Better control of gestures and preloading, at a
 price: you must report playbacks (`o.k`) and engagement (`eng.k`) yourself, or the account's
-statistics will show an empty app — see `references/analytics.md`. Handle protected medias
+statistics will show an empty app — see `references/analytics.md`. Handle protected media
 yourself too.
 
 For a first version, the WebView path is usually right. Move to native when a measured problem
@@ -229,7 +230,7 @@ that is an unpleasant surprise, so offer "resume" as a choice rather than seekin
 - [ ] every field read off a media is guarded — an empty value is an absent key, covers included,
 - [ ] the feed advances by `pagesize`, and stops on `metadata.size`,
 - [ ] off-screen players are paused,
-- [ ] restricted medias are filtered or handled (`is_tokenized`, `has_password`, `is_secured`),
+- [ ] restricted media are filtered or handled (`is_tokenized`, `has_password`, `is_secured`),
 - [ ] if you play natively, `o.k` and `eng.k` are wired, and the figures in the console match a
       manual test,
 - [ ] the `user_token` is stable per account and carries no personal data,

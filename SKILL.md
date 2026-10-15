@@ -1,11 +1,11 @@
 ---
 name: streamlike-integration
-description: Build an integration on top of Streamlike — a web app, a mobile app, a WebTV, a portal, a back-office automation or a server-side ingest pipeline. Use whenever the work involves Streamlike medias, playlists, the Streamlike player (embed, iframe, postMessage), the Streamlike webservices (/ws/*), the Streamlike REST API (api.streamlike.com), the js-streamlike-sdk, or Streamlike playback URLs (cdn.streamlike.com/play). Covers picking the right door, authentication, catalog reading, playback, security, analytics and feeds.
+description: Build an integration on top of Streamlike — a web app, a mobile app, a WebTV, a portal, a back-office automation or a server-side ingest pipeline. Use whenever the work involves Streamlike media, playlists, the Streamlike player (embed, iframe, postMessage), the Streamlike webservices (/ws/*), the Streamlike REST API (api.streamlike.com), the js-streamlike-sdk, or Streamlike playback URLs (cdn.streamlike.com/play). Covers picking the right door, authentication, catalog reading, playback, security, analytics and feeds.
 ---
 
 # Integrating with Streamlike
 
-Streamlike is a video platform: medias are uploaded, encoded, organized in playlists and played
+Streamlike is a video platform: media are uploaded, encoded, organized in playlists and played
 through a hosted player. Three public surfaces are open to an integration, and picking the wrong
 one is the single most expensive mistake in a Streamlike project.
 
@@ -15,7 +15,7 @@ one is the single most expensive mistake in a Streamlike project.
 | --- | --- | --- |
 | Show videos, playlists, covers, transcripts on a page or in an app | **Webservices** (`/ws/*`) + the **player iframe** | Server or client |
 | Ship a web front fast, with a ready-made playlist player, thumbnails, transcripts | **`js-streamlike-sdk`** | Browser |
-| Create, edit, delete medias; upload files; manage users, playlists, security, live | **REST API** | **Server only** |
+| Create, edit, delete media; upload files; manage users, playlists, security, live | **REST API** | **Server only** |
 | Read audience and engagement figures | **REST API** `/analytics/*`, or `/ws/media` for basic counters | Server |
 | Publish a feed (RSS, podcast, Google video sitemap) | **Webservices** | Server |
 
@@ -25,8 +25,18 @@ Two rules that follow from that table, and that no integration may break:
   key acts as the user who created it — with every right of that account unless the key was
   restricted to a list of roles (API 5.30): reading it out of a bundle means handing over
   everything the key may do. Front ends talk to your own backend; your backend talks to the API,
-- **the webservices are the read path.** They are cache-friendly and fast; the API is not built for
-  per-page-view reads and heavy front-end use of it may get the account throttled.
+- **the webservices are the read path; the API is for writes and for what must stay protected.**
+  Anything a visitor's page view or app screen needs — a catalog page, a media page, a player, a
+  search, a feed — reads `/ws/*`. They are anonymous, read the published catalog from an index
+  built for reading, and are made to take front-end traffic. The API authenticates every call,
+  checks the key's rights and reads the account's full, unpublished data: it is built for writes,
+  administration, analytics and what a visitor must not reach (playback tokens, private fields).
+  Routing per-view reads through it — directly, or through your backend as a proxy — puts
+  front-end traffic on a door not sized for it, and heavy use of it may get the account throttled.
+
+  So the default is: **reads go to the webservices, cached on your side; the API only when you
+  write, or when the data is not public.** If a front-end feature seems to need an API read, check
+  `references/webservices.md` first — the field is usually there.
 
 ## What the client must obtain from Streamlike first
 
@@ -87,11 +97,11 @@ inside the reference files — is given from the root of the skill folder.
 | File | Contents |
 | --- | --- |
 | `references/webservices.md` | The 15 `/ws/*` endpoints, parameters, response shapes and absence rules, paging, XML, error behaviour |
-| `references/api.md` | REST API: authentication, keys restricted to a few roles, conventions, `fields`/`range`/`sorts`, errors, responses that surprise, multipart, audio tracks, encoding version, endpoint map |
+| `references/api.md` | REST API: authentication, keys restricted to a few roles, conventions, `fields`/`range`/`sorts`, errors, responses that surprise, multipart, audio tracks, audio versions of a video, synthetic-voice dubbing, encoding version, endpoint map |
 | `references/player-embed.md` | Player URLs, the full parameter table, `postMessage` control, keyboard shortcuts, oEmbed |
 | `references/js-sdk.md` | `js-streamlike-sdk`: install, functions, playlist player, when it is the right tool |
 | `references/playback.md` | HLS/CMAF delivery, multiple audio tracks, subtitles, waveform peaks, native players, offline pitfalls |
-| `references/security.md` | Token-protected medias, IP/referrer restrictions, passwords, domains to whitelist |
+| `references/security.md` | Token-protected media, IP/referrer restrictions, passwords, domains to whitelist |
 | `references/analytics.md` | Playback counting, engagement, `user_token`, resume, ratings, reading the API reports |
 | `references/feeds.md` | mRSS, podcast, Google video sitemap, QR codes, SCORM, short URLs |
 
@@ -102,9 +112,9 @@ Recipes, end to end:
 
 | File | Scenario |
 | --- | --- |
-| `cookbook/mobile-feed-app.md` | A phone app scrolling through a playlist, liking and dismissing medias |
+| `cookbook/mobile-feed-app.md` | A phone app scrolling through a playlist, liking and dismissing media |
 | `cookbook/webtv.md` | A catalog site: playlists, search, media pages, SEO |
-| `cookbook/server-ingest.md` | Uploading and publishing medias from a backend |
+| `cookbook/server-ingest.md` | Uploading and publishing media from a backend |
 
 ## Tooling
 
@@ -145,7 +155,7 @@ office.
 - prefer `permalink` over `media_id` in URLs the end user sees, and `pid` over long parameter
   strings in embed URLs,
 - when the integration is a public front end, assume the catalog is not entirely playable: some
-  medias are token-protected or restricted by IP or referrer. `references/security.md` explains how
+  media are token-protected or restricted by IP or referrer. `references/security.md` explains how
   to detect them instead of showing a broken player,
 - the platform ships SDKs — `js-streamlike-sdk` (TypeScript, npm and CDN), `php-api-sdk` and
   `php-ws-sdk` on `https://github.com/Streamlike`. Reach for them before writing HTTP plumbing,

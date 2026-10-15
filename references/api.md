@@ -4,8 +4,14 @@
 https://api.streamlike.com/
 ```
 
-The write path and the administration path: create and edit medias, upload files, manage
+The write path and the administration path: create and edit media, upload files, manage
 playlists, users, security, lives, streamouts, and read detailed analytics.
+
+**Not the read path of a front end.** Every call is authenticated and rights-checked against the
+account's full data, which makes it the right door for writes and for what must stay protected
+(playback tokens, unpublished media, private fields) — and the wrong one for what a page view
+needs. Catalog pages, media pages, search and feeds read the webservices
+(`references/webservices.md`), cached on your side, even when your backend renders them.
 
 **Server side only.** An API key acts as the user who created it — with every right of that
 account, or with the narrower list of roles it was restricted to (API 5.30, see *Restricting a key
@@ -39,7 +45,10 @@ curl -X POST "https://api.streamlike.com/authent/token/unique" \
 Answers `200` with a token, or `400 INVALID_LOGIN_PASSWORD`.
 
 **Session token**, for an application already authenticated as a user: `POST
-/authent/token/session` issues one, `DELETE /authent/token/session` revokes it.
+/authent/token/session` issues one, `DELETE /authent/token/session` revokes it. It lasts a day and
+never exceeds the token that asked for it: called with a restricted key, it carries the same list
+of roles and ends no later than the key. Deleting the key that asked for it revokes it at once,
+renewals included.
 
 Store keys the way you store database passwords: environment or secret manager, never in a repo, a
 mobile bundle or front-end JavaScript. Rotate by creating a new key and deleting the old one
@@ -87,12 +96,17 @@ order they bite:
   not exist, the `ROLE_` prefix, or anything that is not a list, answers `400 INVALID_FORM` with
   `INVALID_ROLES`. A caller authenticated with a restricted key can only grant roles that key has:
   a key cannot mint a wider one,
+- **a restricted key passes its limits on.** A key it creates without `roles` takes its list, not
+  every right of the account; a key it creates or edits never ends after it does (a later
+  `expiration`, or none, is brought back to its own); an `ftp` key is refused with `400
+  INVALID_TYPE` unless its list grants `FTP_ACCESS`. A restricted key cannot change the account's
+  password or two-factor phone number either: `PATCH /me` answers `403`,
 - **the field exists on `api` keys only.** Sent on an `ftp` key, at creation or on edit, it answers
   `400 INVALID_FORM` with `UNKNOWN_FIELDS` — the same answer an older server gives, since it does
   not know the field,
 - **omit the field at creation for a key that carries every right of the account, now and later.**
   That is what every key did before 5.30, and what an integration that does not send the field goes
-  on getting,
+  on getting — when the caller is itself an unrestricted key or a user session,
 - **send the whole list on every write: what you omit is revoked.** A `PATCH` with `roles`
   replaces the list, it does not add to it. An empty list is accepted, and leaves a key that can
   call `GET /me` and nothing else,
@@ -157,7 +171,7 @@ curl -G "https://api.streamlike.com/medias" \
 - `range` uses first-last indexes, default `0-25`. `range=no` returns the count alone, which is the
   cheap way to know how much there is to walk,
 - `sorts[]` takes `field|asc` or `field|desc`, repeatable. Sorting is ignored when `search` is
-  supplied. A custom field your company opened to sorting is named `customs.<field>` on the medias
+  supplied. A custom field your company opened to sorting is named `customs.<field>` on the media
   and `custom_fields.<field>` on the playlists — see *Custom fields can be typed, and sorted on*,
 - **`fields[]` must be repeated, one per value.** A comma-joined list answers `400
   INVALID_FIELDS`. Dotted paths select nested fields (`source.duration`),
@@ -233,7 +247,7 @@ window no longer stops everything:
 
 - **reads keep answering.** `GET`, `HEAD` and `OPTIONS` stay reachable, along with the
   authentication endpoints and `POST /medias/{media_id}/token` — so playback of token-protected
-  medias is never interrupted,
+  media is never interrupted,
 - **writes answer `401` with `API_OFFLINE`**, and write nothing. `POST`, `PATCH` and `DELETE` are
   refused for the length of the window,
 - **`GET /tools/shorturl` is refused as well.** It answers to `GET`, but it mints the short link and
@@ -337,6 +351,10 @@ index. Order `source[plop]` before `source[360]` when both are present.
 
 Large sources can also be dropped on the account's FTP watchfolder and pulled in with
 `POST /medias/{media_ids}/actions/retrieve` — steadier than a long HTTP upload over a poor link.
+**A file written to during the last 60 seconds counts as still uploading** (API 5.66): `GET
+/ftp/files` leaves it out and `media_ftp_filename` answers `400 INVALID_FORM` with
+`INVALID_SOURCE_ENCODE_FTPFILENAME`. Wait a minute after your FTP upload ends before creating the
+media — before 5.66 the half-sent file was taken and the encoding failed later.
 
 **Any container the encoder reads is accepted** (API 5.33): `mp4`, `mov`, `mkv`, `webm`, `avi`,
 `wmv`, `flv`, `mpg`, `ts`, `m2ts`, `mts`, `mxf`, `ogv`, `dv` on the video side, `mp3`, `wav`,
@@ -358,41 +376,56 @@ Accepted on `POST /medias` and on `PATCH /medias/{media_id}`, and readable back 
 `source.complexity`. It was dropped from both for a while — it was inert on the encoder of the
 day — and API 5.30 brought it back, wired to what the encoder actually does.
 
-`POST /medias/{media_ids}/actions/complexity` sets it on medias that already exist, in bulk. Two
+`POST /medias/{media_ids}/actions/complexity` sets it on media that already exist, in bulk. Two
 things about it:
 
 - **it encodes nothing.** The value is stored and applies to the *next* encoding of that media —
   a re-encode you order, a replacement video you upload. Nothing is re-queued behind your back and
   the files being served do not change. To apply it to what is published today, order the
   re-encode yourself,
-- it used to refuse medias produced by the current pipeline with `INVALID_MEDIA_ENCODING_V2`. It
+- it used to refuse media produced by the current pipeline with `INVALID_MEDIA_ENCODING_V2`. It
   no longer does, and that error code is not returned by any endpoint any more.
 
-One consequence worth knowing if you read bitrates. On medias encoded by the current pipeline, the
+One consequence worth knowing if you read bitrates. On media encoded by the current pipeline, the
 bitrate reported for a rendition is what the encode **actually spent**, not a nominal value from a
 table — so a simple screencast can report a small fraction of what a comparable media reported
 before. It is the same picture; the number is simply true now.
 
 ## Audio tracks and video replacement
 
-API 5.30 and later, on medias produced by the current encoding pipeline. `GET
+API 5.30 and later, on media produced by the current encoding pipeline. `GET
 /medias/{media_id}/audio-tracks` says whether a media is one of them, and what it carries:
 
 ```json
 {"encoding_v2": true,
  "audio": [{"language": "fr", "kind": "audio", "label": "Français", "default": true},
            {"language": "en", "kind": "audio", "label": "English", "default": false}],
- "audio_default": "fr", "manageable": true, "promotable": false}
+ "audio_default": "fr", "manageable": true, "promotable": false, "flattenable": true,
+ "blocked_by": null, "blocked": []}
 ```
 
 `manageable` false means the media predates the pipeline: read its tracks, do not try to write
 them. `promotable` true means the opposite corner — a single-track media that can join per-track
 management (see below). They answer two different questions and neither substitutes for the other:
 a media that declares tracks is never promotable, one that declares none is never manageable. Read
-`manageable` before you draw an edit control, or the write endpoints answer `404`.
+`manageable` before you draw an edit control, or the write endpoints answer `404`. `flattenable`
+is the way back out, described below.
 
-**This endpoint is one of the few here that sends nulls.** All six fields are always present, and
-`audio_default` and `audio[].label` come back as `null` rather than being omitted — test them for
+`manageable` says you are allowed to write; **`blocked_by` says whether you may write now.** It is
+the first reason a track write would answer `409` — `ENCODING_IN_PROGRESS`,
+`SOURCE_RESTORE_IN_PROGRESS`, `SPEECH_TO_TEXT_IN_PROGRESS`, `DUBBING_IN_PROGRESS`, `LIVE_RUNNING` —
+or `null` when nothing runs. `blocked` lists every action the media refuses right now, one
+`{action, reason}` entry per action and per reason: `audio_track.write`, `audio_track.flatten`,
+`video.replace`, `subtitle.write`, `speech_to_text.launch`, `dubbing.launch`, `media.delete` and
+the rest. An action held by two operations appears twice, on purpose: grey a control with the
+first reason only and your user lifts one obstacle to hit the next. Map the codes to your own
+sentences; they are stable, not meant to be displayed. An action missing from `blocked` is not
+held by anything running, which does not make it possible — its own preconditions are what
+`manageable`, `promotable` and `flattenable` answer. The same list is served on the media,
+`GET /medias/{media_id}?fields[]=availability`.
+
+**This endpoint is one of the few here that sends nulls.** Every field is always present, and
+`audio_default`, `audio[].label` and `blocked_by` come back as `null` rather than being omitted — test them for
 `null`, not for absence, and fall back to the language code when a label is missing. `audio` is an
 **empty array**, never a missing key, on a mono-audio media, a silent video or one never encoded.
 And `audio[].language` is not an identifier: a regular track and its audio description share it.
@@ -412,6 +445,7 @@ separate field. Subtitles follow the same convention, `fr-cc` for closed caption
 | `PATCH …/audio-tracks/{language_id}` | Renames it (`label`) or makes it the default (`default`) |
 | `DELETE …/audio-tracks/{language_id}` | Removes it |
 | `POST …/audio-tracks/{language_id}/promote` | Declares the language of a single-track media's audio (API 5.30) |
+| `POST …/audio-tracks/flatten` | Drops every declared track: the media plays one languageless audio again |
 | `POST /medias/{media_id}/video/replace` | New video, every audio track and subtitle kept |
 
 The content of a track is `track[file]` (multipart) or `track[url]` for the platform to fetch;
@@ -422,9 +456,52 @@ publishes under a proper language name — the video is never re-encoded. `video
 picture alone, and refuses a source whose duration diverges from the published one by more than
 `max(2 s, 5 %)`.
 
+**`flatten` is destructive and cannot be undone.** It is the symmetric of `promote`: every declared
+track is dropped and the media publishes one languageless audio again, rebuilt from the stored
+source, the video untouched. Each removed track loses its files, the audio you uploaded for it
+included, so getting a language back means uploading it again. A synthetic-voice track published
+in one of those languages goes with it. It takes no token — it is about the whole track table —
+and it is the only way to empty that table: `DELETE` stops at the last track with
+`INVALID_LAST_AUDIO_TRACK`. Offer it behind a confirmation that says what is lost, and only when
+`flattenable` is true; it is false on a media whose stored source carries no audio of its own,
+which flattening would leave silent.
+
 Writes are asynchronous and exclusive: while one runs, the media answers `409
 ENCODING_V2_JOB_ACTIVE` and `source.encoding_operation_running` is true on `GET
 /medias/{media_id}`. Poll that field rather than retrying blind.
+
+One write is never refused for that reason: `POST /medias/{media_ids}/actions/speechtotext`.
+The transcription runs at once; if the media is still busy when its subtitles are ready to be
+published, the publication waits — up to 24 hours — and goes through by itself once the running
+operation ends. `GET /pipelines/{id}` shows the wait on the `subtitles` job as `jobs.waiting_for`
+(`pipeline_id`, `encoding_job_id`, `since`), null once it went through (API 5.39 and later).
+
+It does wait for another transcription, though: a media runs one speech-to-text at a time, and a
+second one answers `400 INVALID_MEDIA_SPEECHTOTEXT_RUNNING` rather than billing the engine twice
+to overwrite its own subtitles.
+
+**Several subtitle languages in one call** (API 5.45 and later). `speech_to_text[languages][]`
+takes a list of target languages in place of the single `speech_to_text[language]`, alongside
+`automatic_translation: true`: one subtitle set per language, produced one after the other, in the
+order given. Nothing runs faster — the media still takes one at a time — but nothing has to be
+asked for twice, and the loop that polled the pipeline to post the next language when the previous
+one ended becomes one call:
+
+```bash
+curl -X POST "https://api.streamlike.com/medias/MEDIA_ID/actions/speechtotext" \
+  -H 'X-Streamlike-Authorization: streamlikeAuth token="YOUR_KEY"' \
+  -H "Content-Type: application/json" \
+  -d '{"speech_to_text":{"type":"subtitle","automatic_translation":true,"languages":["de","it","es"]}}'
+```
+
+Twenty languages at most, duplicates ignored, and `languages` without `automatic_translation`
+answers `INVALID_SPEECHTOTEXT_LANGUAGES` — the same audio transcribed twice gives the same
+subtitles, billed twice. A translation posted while a queue is running joins that queue instead of
+being refused; a plain transcription still waits for it to end.
+
+`GET /medias/{media_id}?fields[]=availability` is where the queue is read: one `SPEECH_TO_TEXT`
+entry per language under `availability.operations`, in the order they will run, `step: "queued"`
+on those still waiting their turn and no `step` on the one under way.
 
 Reading the same thing from the catalog side:
 
@@ -433,14 +510,98 @@ Reading the same thing from the catalog side:
   it is not served in listings (API 5.30 and later),
 - `source.is_multiple_audio` is a boolean on every video and audio media, listings included, and
   `GET /medias?source.is_multiple_audio=1` filters on it,
-- mass re-encoding refuses these medias (`INVALID_MEDIA_IS_MULTIPLE_AUDIO`): their tracks are
+- mass re-encoding refuses these media (`INVALID_MEDIA_IS_MULTIPLE_AUDIO`): their tracks are
   managed one by one through the endpoints above.
+
+### Audio versions of a video
+
+`POST /medias/{media_ids}/actions/audio/generate` makes an `audio` media out of each video of the
+list — for a podcast feed, an audio-only playlist. A multi-track video gives one audio media per
+language track, named after the video with the language code appended (`My video (FR)`) and
+carrying that language; any other video gives one, without suffix nor language. Audio description
+tracks give nothing. Each audio media takes the video's description, keywords, tags, cover, owner
+and visibility, and a tag named `audio_{permalink of the video}`, set on the video too: filter the
+media list on that tag to find the family.
+
+Two things to know. **Access rights and token security are not carried over**: the audio media get
+your company's defaults, like any new media, so a protected video can give an open audio — set the
+security on them yourself. And the call is **idempotent**: run it again and only the versions not
+yet generated are created; deleting the video leaves its audio media alone.
+
+Refusals are per media, as for every bulk action: `INVALID_MEDIA_NOT_A_VIDEO`,
+`INVALID_MEDIA_SOURCE` (no audio to take, or audio description only), and `INVALID_MEDIA_ENCODING`,
+`INVALID_MEDIA_SOURCE_RESTORING` or `DUBBING_IN_PROGRESS` while an operation is rewriting the audio
+— retry once it is over.
+
+## Synthetic-voice dubbing
+
+A media can be given an audio track in another language, spoken by synthetic voices from its
+subtitles. It needs the `media_dubbing` company option, which Streamlike enables — without it,
+the dubbing calls answer `400 INVALID_COMPANY_OPTIONS` — and a multi-track media: one still
+publishing a single undeclared audio answers `400 INVALID_MEDIA_MONO_AUDIO` at the launch and at
+the publication, and the `promote` call above lifts it.
+
+The flow, one track per language:
+
+| Step | Call |
+| --- | --- |
+| What a launch needs: subtitle languages and their phrase count, the speakers, the voices, your credit and defaults | `GET /medias/{media_id}/dubbing/context` |
+| Hear a voice, on a phrase of the media or a sentence of yours (300 characters, MP3 in base64) | `POST /medias/{media_id}/dubbing/sample`, `POST /companies/dubbing/sample` |
+| Launch — answers `202`, tracks in state `generating` | `POST /medias/{media_id}/dubbings` |
+| Follow — this is the call to poll | `GET /medias/{media_id}/dubbings` |
+| Listen before publishing: `listen_url`, signed for ten minutes | `GET /medias/{media_id}/dubbings/{lang}` |
+| Say one line again with a new text, then keep it | `POST …/dubbings/{lang}/lines/{index}/preview`, then `PATCH …/lines/{index}` with the `audio_ref` the preview gave |
+| Put the track on the media — `202`, then state `published` | `POST /medias/{media_id}/dubbings/{lang}/publish` |
+
+A launch body names the source subtitles, the languages, and one voice per speaker and per
+language, voices being ids from `GET /companies/dubbing/voices`:
+
+```json
+{"source_lang": "fr", "languages": ["en", "de"],
+ "speakers": {"en": {"1": {"gender": "male", "voice": "VOICE_ID"}}, "de": {"1": {"gender": "male", "voice": "VOICE_ID"}}},
+ "original_sound_level_percent": 15}
+```
+
+What to build in:
+
+- **the subtitles are what gets spoken.** When they are the transcription's, never rewritten,
+  `dubbing/context` says `from_transcription: true`: a transcription error would be spoken as is,
+  so have someone read them first. A speaker tag at the head of a cue, `[Henri] …`, names that
+  speaker and is not spoken,
+- **a language without subtitles is translated first**, and the translated subtitles land on the
+  media. The track fails with `TRANSLATION_FAILED` if that step does,
+- **states**: `generating`, then `review` (waiting for a listen and a publish), `publishing`,
+  `published`. A failed track carries an `error` code; `GENERATION_LOST` and `LINES_PURGED` say
+  that nothing can be resumed, and are answered by launching that language again,
+- **publishing adds that one track and touches nothing else**: the media stays playable throughout,
+  and a track already published in that language is replaced. A published track stays open to
+  corrections; publishing again applies the ones kept since (`corrections_pending`), and with none
+  it answers `400 NOTHING_TO_PUBLISH`,
+- **`DELETE /medias/{media_id}/dubbings/{lang}`** throws away the dubbing work — report,
+  corrections, unpublished audio. On a published track the audio track itself stays; remove it
+  through the audio tracks endpoints. The other way round, writing a real track in that language
+  replaces the dubbing,
+- **one operation at a time**, as for the audio tracks: `409` while something runs on the media,
+  and `blocked` on `GET /medias/{media_id}/audio-tracks` says what,
+- **the credit is counted in hours of media per language**: `GET /companies/dubbing/credit`
+  answers `subscribed_ms`, `used_ms`, `remaining_ms`. A track generated again counts again;
+  samples and re-said lines do not. A launch beyond what is left is refused with
+  `DUBBING_CREDIT_EXHAUSTED`,
+- **keeping a speaker's own voice** (`preserve_original: true` on its entry of `speakers`) needs a
+  further option and `voice_consent: true` on the launch, the warrant that the voice may be
+  cloned. The voice cast beside it stays required: it speaks when the media gives too little clean
+  audio of that speaker, and the track says so per speaker in `original_voice` (`kept`,
+  `not_enough_audio`, `failed`). The allowance of such voices is in `dubbing/context`, under
+  `voice_cloning`.
+
+The company defaults — languages, voices, how much original sound stays under the voices — are the
+`dubbing_*` preferences of `POST`/`PATCH /companies/preferences`.
 
 ## Which pipeline encoded a media
 
 API 5.30 and later. `source.encoding_version` is an integer saying which encoder produced the files
 the media publishes: `2` for the current pipeline, `1` for the legacy encoder. It is served
-everywhere a media is — single media, listings, medias embedded in another response — and costs no
+everywhere a media is — single media, listings, media embedded in another response — and costs no
 extra call.
 
 **The field is absent when the media publishes nothing.** A media never encoded, a live, a first
@@ -484,12 +645,12 @@ Two things that go with it:
 - it is **read only**, and not an accepted input. If you edit a media by reading it and posting the
   whole object back, **strip it first** — like any field the form does not know, sending it answers
   `400 INVALID_FORM` with `UNKNOWN_FIELDS`,
-- **it filters too, from API 5.30.** `GET /medias?source.encoding_version=2` keeps the medias
+- **it filters too, from API 5.30.** `GET /medias?source.encoding_version=2` keeps the media
   published by the current pipeline, `1` the legacy ones, and leaving it out does not filter. The
   same parameter is on `GET /lives` and `GET /analytics/medias/{from}/{to}`. It reads the columns
   the returned field reads, so the value you ask for is the value that comes back — and a media
   publishing nothing is returned by **neither** value, so the two calls put together give you fewer
-  medias than the unfiltered listing. Against a server older than 5.30 the listing cannot be
+  media than the unfiltered listing. Against a server older than 5.30 the listing cannot be
   restricted on it: read the field over a listing and sort client side.
 
 The same value, under the same name, is on the webservice side as
@@ -507,15 +668,15 @@ API 5.30 and later. The player draws an audio media as an interactive waveform
   uploaded shows that cover rather than the skin. Set `waveform` to `true` on that media to get the
   skin anyway. Only meaningful on an audio media,
 - **`peaks.files.index`** in media responses: URL of the peaks JSON sidecar, served for encoded
-  audio medias. Format, per-track variants and what to do with it: `references/playback.md`,
+  audio media. Format, per-track variants and what to do with it: `references/playback.md`,
 - the **`waveform` and `waveform_color` company preferences** (`GET`/`PATCH
   /companies/preferences`): the account-wide default of the skin, and its accent color — six
   hexadecimal digits without `#` (e.g. `44B0A7`). The color also drives the covers the platform
-  generates for audio medias uploaded without one.
+  generates for audio media uploaded without one.
 
 Changing `waveform_color` is not free: the platform redraws, in the background, every generated
 audio cover of the account. `GET /companies/preferences` tells you how many that is, in
-`waveform_cover_count` (API 5.30) — an integer counting the audio medias whose cover was generated
+`waveform_cover_count` (API 5.30) — an integer counting the audio media whose cover was generated
 from the waveform. Covers you uploaded yourself are never counted and never touched. Three things
 about that field:
 
@@ -524,18 +685,15 @@ about that field:
 - it is **read only**. Posting your preferences back with it in the payload answers `400
   INVALID_FORM` / `UNKNOWN_FIELDS`, like any field the form does not know — send only the
   preferences you mean to change,
-- it is served on `/companies/preferences` alone, because it costs a count over your medias.
+- it is served on `/companies/preferences` alone, because it costs a count over your media.
   Preferences read from anywhere else do not carry it.
-
-As with the audio-track endpoints, check `scripts/openapi_lookup.py fields /medias/{media_id}`
-against the published description before relying on these: an older server does not know them.
 
 ## Custom fields can be typed, and sorted on
 
 API 5.34 and later. Your own metadata rides on a media as `customs[]` (`name`, `value`, `public`)
 and on a playlist as `custom_fields[]`, the value being free text in both. The names your company
 uses are declared in one catalogue, `GET /medias/customfields`, and that catalogue now carries two
-options per field — `type` and `sortable` — which govern the medias and the playlists alike.
+options per field — `type` and `sortable` — which govern the media and the playlists alike.
 
 - **`type` checks what may be written under a name.** `number` takes anything numeric, `boolean`
   takes `true`, `false`, `1` and `0`, `json` takes a valid JSON document, `text` and an empty type
@@ -559,6 +717,53 @@ Whoever administers your account sets both options, in the back office or throug
 `POST /medias/customfields`, which replaces the whole catalogue on every write. Against a server
 older than 5.34 the catalogue answers neither option and no custom field sorts.
 
+## The transcription dictionary
+
+API 5.35 and later. The speech-to-text engine is told about the words it would otherwise get
+wrong — product names, people, jargon — and they come from two places:
+
+- **the company dictionary**, the `speechtotext_words` preference: a list of `{"value": "…"}`
+  entries applied to every transcription of the account. `GET /companies/preferences` reads it
+  with the rest of the preferences, and `POST /companies/preferences` rewrites the whole list —
+  what you omit is removed,
+- **the words of one media**, `speech_to_text[words]` on
+  `POST /medias/{media_ids}/actions/speechtotext` and `source[encode][speech_to_text][words]` at
+  upload.
+
+Two things to know from 5.35 on:
+
+- **`GET` and `POST /companies/preferences/speechtotext-words` read and grow the dictionary
+  alone.** `POST` takes one `value` — a string, two characters at least once trimmed — and appends
+  it; a word the dictionary already carries, whatever its case, is not added twice and the call
+  still answers `200`, so retrying is safe. Both answer
+  `{"speechtotext_words": [{"value": "…"}]}`, the list after the call, `[]` when there is none. A
+  blank or single-character value answers `400 INVALID_FORM` with `INVALID_SPEECHTOTEXT_WORDS`.
+  They need the `SPEECHTOTEXT_WORDS_ADD` role, which `COMPANY_PREF` includes: a key restricted to
+  `SPEECHTOTEXT_WORDS_ADD` alone (`roles[]` on `POST /me/keys`) can feed the dictionary without
+  reading or writing anything else of the preferences. Removing a word still goes through
+  `POST /companies/preferences`, with the whole list,
+- **the words of a media add to the dictionary, they no longer replace it.** The engine receives
+  the dictionary first, then the words of the media it does not already carry, matched without
+  regard to case. Before 5.35, one media word was enough to silence the whole dictionary for that
+  transcription; if your integration relied on that to bypass it, empty the preference instead.
+
+**A media without speech is not a failure** (API 5.38 and later). When the engine finds no speech
+in the audio — music, silence — the `speechtotext` job ends `done` without a track, and
+`jobs.outcome` on `GET /pipelines` and `GET /pipelines/{pipeline_id}` says why: `no_speech`. It
+is `null` while the job runs, when a track came out, and on every other job type. Before 5.38
+that media put the pipeline in `error`; if you were reading the pipeline state to spot a media
+without speech, read this field on the job instead.
+
+## Archived media in the webservices
+
+API 5.41 and later.
+`media_archived_in_ws`, a `GET`/`POST`/`PATCH /companies/preferences` boolean off by default,
+decides whether an archived media is included in the `media`, `playlist`, `related` and `rss`
+webservices instead of reading there as if it did not exist. It changes nothing on the API
+itself — an archived media was always reachable by id through `GET /medias/{media_id}`. Details,
+and what `status` reads on each side: `references/webservices.md`, "Reading a response — the rules
+that hold everywhere".
+
 ## Endpoint map
 
 160+ paths, grouped by tag. Explore with `scripts/openapi_lookup.py list --tag <name>`.
@@ -567,8 +772,8 @@ older than 5.34 the catalogue answers neither option and no custom field sorts.
 | --- | --- |
 | `Authentication` | Session and single-use tokens |
 | `Me` | Current user, API keys and the roles they are restricted to, notifications, preferences |
-| `Medias` | Medias and lives: CRUD, attachments, subtitles, chapters, interactions, audio tracks, covers, SCORM, social push, playback tokens |
-| `Medias - Actions` | Bulk operations on a list of media ids: delete, duplicate, tag, keyword, playlist, visibility, security, re-encode, speech-to-text |
+| `Medias` | Medias and lives: CRUD, attachments, subtitles, chapters, interactions, audio tracks, synthetic-voice dubbing, covers, SCORM, social push, playback tokens |
+| `Medias - Actions` | Bulk operations on a list of media ids: delete, duplicate, tag, keyword, playlist, visibility, security, re-encode, speech-to-text, audio versions |
 | `Medias - Misc` | Creators, languages, custom field and custom action templates |
 | `Organization` | Playlists, tags, keywords, views |
 | `Integration` | Player settings (`pid`), skins, logos, WebTV profiles, tracking accounts |
@@ -578,8 +783,8 @@ older than 5.34 the catalogue answers neither option and no custom field sorts.
 | `Streamout` | Scheduled broadcast channels |
 | `Streamlink` | Short URLs bound to a media |
 | `Social` | Linked YouTube / Dailymotion accounts |
-| `Identity` | Users, groups, company preferences |
-| `Hibernation` | Archived medias and their actions |
+| `Identity` | Users, groups, company preferences, dubbing voices and credit |
+| `Hibernation` | Archived media and their actions |
 | `Helpdesk`, `Resources`, `Ftp`, `Tools` | Tickets, reference lists, FTP files, short URLs |
 
 ## Endpoints an integration reaches for first
@@ -589,13 +794,14 @@ older than 5.34 the catalogue answers neither option and no custom field sorts.
 | Give an integration a key limited to what it does | `POST /me/keys` with `roles`, then `GET /me` with the new key |
 | Create a media with its file | `POST /medias` (multipart) |
 | Publish / unpublish | `PATCH /medias/{media_id}` with `visibility.state` = `online`, `offline`, `archived` |
-| Put medias in a playlist | `POST /medias/{media_ids}/actions/organization/playlist` |
+| Put media in a playlist | `POST /medias/{media_ids}/actions/organization/playlist` |
 | Reorder a playlist | `POST /organization/playlists/{playlist_id}/order` |
 | Grant a viewer access to a protected media | `POST /medias/{media_id}/token` |
 | Add subtitles or chapters | `POST /medias/{media_id}/subtitles/{language_id}`, `…/chapters/{language_id}` |
 | Follow an encoding | `GET /pipelines`, and `GET /medias?encoded=1` to know what is playable |
 | Add an audio track | `POST /medias/{media_id}/audio-tracks/{language_id}` |
 | Replace the video, keeping the tracks | `POST /medias/{media_id}/video/replace` |
+| Dub a media into another language | `GET /medias/{media_id}/dubbing/context`, then `POST /medias/{media_id}/dubbings` |
 | Read audience | `GET /analytics/playback/{from}/{to}`, `GET /analytics/engagement/{media_id}/connections/{from}/{to}` |
 
 ## SDKs
