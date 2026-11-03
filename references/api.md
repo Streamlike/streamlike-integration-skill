@@ -53,7 +53,9 @@ renewals included.
 Store keys the way you store database passwords: environment or secret manager, never in a repo, a
 mobile bundle or front-end JavaScript. Rotate by creating a new key and deleting the old one
 through `/me/keys` — and take the rotation as the moment to give each integration a key of its
-own, restricted to the roles it uses, with an expiration.
+own, restricted to the roles it uses, with an expiration. Before deleting the old key, read its
+`last_used_at` (API 5.70 and later): once it stops moving, nothing calls with that key any more.
+The same field finds the keys nobody uses, which are the ones to delete first.
 
 ### Restricting a key to a few roles
 
@@ -117,15 +119,20 @@ order they bite:
   whatever its list says.
 
 Every key response — `GET /me/keys`, `GET /me/keys/{id}`, the `201` of the creation and the `200`
-of the edit — carries two **read-only** fields, both selectable with `fields[]`:
+of the edit — carries three **read-only** fields, all selectable with `fields[]`:
 
 | Field | Meaning |
 | --- | --- |
 | `restricted` | `true` when the key carries its own list, `false` when it carries every right of its user |
 | `roles` | That list. **Absent** both when the key has no list and when the list is empty — read `restricted` first |
+| `last_used_at` | API 5.70 and later. The last time the key, or a session token obtained with it (renewals included), authenticated an API request or an FTP session, to the nearest five minutes. **Absent** while the key has not been used since 5.70 — a new key, or an old one nobody has called with since |
 
-`restricted` is not a form field: posting a read-back key with it answers `400 INVALID_FORM` with
-`UNKNOWN_FIELDS`, so strip it before sending the object back, as with any read-only field.
+`last_used_at` is written as the key is used, not before: the response to a call made with a key
+still shows the previous value, and the next call shows the new one.
+
+`restricted` and `last_used_at` are not form fields: posting a read-back key with either answers
+`400 INVALID_FORM` with `UNKNOWN_FIELDS`, so strip them before sending the object back, as with any
+read-only field.
 
 Existing keys are untouched: they carry every right of their user, as before, and answer
 `restricted: false` with no `roles` field. Nothing changed for `ftp` keys. Check the published
@@ -175,7 +182,10 @@ curl -G "https://api.streamlike.com/medias" \
   and `custom_fields.<field>` on the playlists — see *Custom fields can be typed, and sorted on*,
 - **`fields[]` must be repeated, one per value.** A comma-joined list answers `400
   INVALID_FIELDS`. Dotted paths select nested fields (`source.duration`),
-- `search` is full text over the resource.
+- `search` is full text over the resource,
+- `filter` (API 5.68, on `GET /medias` and `GET /analytics/medias/{from}/{to}`, **not** on
+  `GET /lives`, which answers `400 FILTER_NOT_SUPPORTED`) takes one multi-criteria expression —
+  see *Filtering on several criteria* below.
 
 Responses wrap the payload:
 
@@ -193,6 +203,38 @@ means the full-text backend was unavailable and the answer was built **without a
 `search`**: the other criteria still hold, but the term did not filter anything. So the set comes
 back wider than you asked, not shorter. Treat it as "my search was ignored" and run it again later,
 never as "these are the matches".
+
+**Filtering on several criteria (API 5.68).** `filter` takes comparisons `field operator value`
+joined by `and` / `or` (lowercase, `and` binds tighter) and grouped with parentheses:
+
+```bash
+curl -G "https://api.streamlike.com/medias" \
+     -H 'X-Streamlike-Authorization: streamlikeAuth token="YOUR_KEY"' \
+     --data-urlencode 'filter=((type = video) and (created_at >= "2026-01-01")) or (with_subtitles = false)'
+```
+
+- the expression is ANDed with every other parameter and with the key's rights: it only narrows,
+- `GET /medias/filterfields` returns the fields a program can use, each with its `type`, the
+  `operators` it takes, its `choices` when the list is closed and, for ids and codes, `values_from`:
+  the endpoint that lists them (`/organization/tags`, `/resources/countries`…). Read it rather than
+  hard-coding the list; the "Filtering Medias" section of the API introduction says the same in
+  prose. Ids are the encrypted ones for tags,
+  keywords and playlists, numeric for referrers and ips,
+- **negations keep the media that lack the field**: `tags != X` returns the media without any tag
+  too. `countries` is the exception: it reads "playable in", so a media without countries is
+  matched by `=` and `in` and excluded by `!=` and `notIn`,
+- dates take the API format (offset within ±14:00) or `YYYY-MM-DD[THH:MM[:SS]]` read in UTC, and
+  compare by range only; a media never played matches no range on `last_playback_at`, so add
+  `played = false` (API 5.74) to catch it: the media to archive are
+  `last_playback_at < "2026-01-01" or played = false`,
+- at most 4000 bytes of UTF-8 and 20 levels of parentheses. A wrong expression answers `400
+  INVALID_FILTER`, `data.reason` saying why (`UNKNOWN_FIELD`, `OPERATOR_NOT_ALLOWED`,
+  `INVALID_VALUE`, `INVALID_ENCODING`…) and `data.position` where, as a byte offset,
+- **it fails the opposite way to `search`.** When the search index is unavailable, a request
+  carrying `filter` answers `503 FILTER_UNAVAILABLE` instead of a widened list. Retry later; never
+  replay the request without `filter` and treat the answer as the same set. Against a server older
+  than 5.68 the parameter is silently dropped and the full list comes back — check the API version
+  before relying on it.
 
 ## Status codes and errors
 
@@ -657,6 +699,28 @@ The same value, under the same name, is on the webservice side as
 `metadata.global.encoding_version`, in every media payload `media`, `playlist` and `related` return
 — `references/webservices.md`.
 
+## Pipelines holding one job type
+
+From 3 November 2026 (the API still reports 5.75). `GET /pipelines?job_type=TYPE` keeps the
+pipelines that hold at least one job of that type: `download`, `encoding`, `encodingpassthru`,
+`encodingupdate`, `coldstorage`, `frozenstorage`, `live`, `social`, `speechtotext`, `subtitles`,
+`ftpexport`. It is ANDed with the other filters (`states`, `media`, `updated_at_*`):
+
+```bash
+curl -G "https://api.streamlike.com/pipelines" \
+     -H 'X-Streamlike-Authorization: streamlikeAuth token="YOUR_KEY"' \
+     --data-urlencode "job_type=speechtotext" \
+     --data-urlencode "states[]=error" \
+     --data-urlencode "fields[]=id"
+```
+
+- it takes one type per call; for two, make two calls,
+- **a misspelled type is not an error.** `job_type=subtitle` answers `200` with an empty list,
+  exactly like a type no pipeline holds. Take the value from the list above, never from user
+  input you have not checked,
+- it filters pipelines, not jobs: the pipeline comes back with all its jobs, the matching one and
+  the others.
+
 ## Waveform and peaks
 
 API 5.30 and later. The player draws an audio media as an interactive waveform
@@ -763,6 +827,74 @@ webservices instead of reading there as if it did not exist. It changes nothing 
 itself — an archived media was always reachable by id through `GET /medias/{media_id}`. Details,
 and what `status` reads on each side: `references/webservices.md`, "Reading a response — the rules
 that hold everywhere".
+
+## Media expiration alert
+
+From 3 November 2026 (the API still reports 5.75). Two `GET`/`POST`/`PATCH
+/companies/preferences` fields turn on a daily mail listing the online media whose visibility
+ends soon:
+
+- `media_expiration_alert_email`, the address that receives it,
+- `media_expiration_alert_days`, how many days ahead, from 1 to 365.
+
+```bash
+curl -X PATCH "https://api.streamlike.com/companies/preferences" \
+     -H 'X-Streamlike-Authorization: streamlikeAuth token="YOUR_KEY"' \
+     -H 'Content-Type: application/json' \
+     -d '{"media_expiration_alert_email":"alerts@example.com","media_expiration_alert_days":15}'
+```
+
+- **they go in pairs.** Setting one while the other is empty answers `400 INVALID_FORM` with
+  `MANDATORY_MEDIA_EXPIRATION_ALERT_EMAIL` or `MANDATORY_MEDIA_EXPIRATION_ALERT_DAYS`. Once both
+  are stored, a `PATCH` can move one alone: the stored value completes the pair,
+- **to turn the alert off, empty both in the same call**: `""` for the address, `null` for the
+  days. Emptying only one is refused, as above,
+- **off reads as absent.** When the alert is off, `GET /companies/preferences` leaves both keys
+  out; there is no `false` and no `0` to test,
+- a value out of range or of the wrong type answers `INVALID_MEDIA_EXPIRATION_ALERT_DAYS`, an
+  address that is not one `INVALID_MEDIA_EXPIRATION_ALERT_EMAIL`,
+- the mail lists only online media that have a visibility end date, and each one on a single
+  day: the day its end falls exactly `media_expiration_alert_days` days later. Nothing
+  is sent on a day with nothing to report.
+
+## Streamouts and secured media
+
+API 5.75 and later.
+A streamout is a timetable of media, playlists and lives, played by every viewer who opens
+`play?str_id=STREAMOUT_ID`: its schedule is one answer shared by all of them, so it cannot carry
+a decision that depends on the viewer. Two rules follow:
+
+- **no media with a security of its own.** An IP or referrer restriction attached to the media,
+  a token, a password or token generation refuses the whole configuration on `POST /streamouts`
+  and `PATCH /streamouts/{streamout_id}`: `400` with `INVALID_CONFIG_ITEMS_ITEM__MEDIA_SECURED`
+  for a `media` or `live` item and for the jingle, `INVALID_CONFIG_ITEMS_ITEMS_ITEM__MEDIA_SECURED`
+  for a media inside a `playlist` item. Securing a media after it was scheduled does not edit the
+  streamout, it stops its broadcast: the player page and the scheduler answer `404`, as for an
+  offline streamout, until the media leaves the schedule or loses its security,
+- **the company's global IP or referrer rules do not apply inside a streamout.** A media
+  protected only by a global rule is accepted in the schedule, and every viewer of the streamout
+  sees it while the streamout is online. Outside the streamout it stays restricted as before.
+
+`GET /streamouts` and `GET /streamouts/{streamout_id}` carry a `broadcast` object, among the
+default fields:
+
+```json
+"broadcast": {
+  "blocked": false,
+  "secured_media_ids": [],
+  "company_global_security": true
+}
+```
+
+| Field | Meaning |
+| --- | --- |
+| `blocked` | At least one media of the schedule has a security of its own: the streamout is not broadcast |
+| `secured_media_ids` | The ids of those media |
+| `company_global_security` | The company has at least one global IP or referrer rule, which the streamout does not apply |
+
+In the configuration returned, an item whose media has a security of its own also reads
+`error: "secured"`. Reading `blocked` before embedding a streamout is the cheap way to avoid a
+player that shows nothing.
 
 ## Endpoint map
 

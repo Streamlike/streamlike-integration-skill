@@ -18,11 +18,38 @@ https://cdn.streamlike.com/o.k?m=MEDIA_ID&t=TIMESTAMP&s=hls&p=myapp
 | `t` | recommended | Cache buster: a timestamp or random number |
 | `s` | recommended | Stream type played: `mp4` or `hls` |
 | `p` | no | Name of your player, to tell sources apart in the console |
+| `u` | recommended | Viewer id — the same value you pass as `user_token` elsewhere, or a client fingerprint. Without it the playback is counted, but not as a playback of a player: it is left out of the playback ratio (see below) |
 | `l` | no | Audio track heard when playback starts, as a track token: `fr`, `en`, `fr-ad` for an audio description. Omit it on a media with a single, undeclared audio track |
 | `us` | no | Where the traffic comes from, as your own label (`newsletter-october`, `partner-site`); the Streamlike player sends the `utm_source` of its URL here. Takes the place of the referrer in the referrer statistics grouped by page. Up to 100 characters |
+| `str` | no | Streamout id, when the media is played inside a streamout |
 
 Fire it on the first `playing` event, once per playback, and unbind afterwards — every call counts
 as a view.
+
+## Counting an impression from your own player
+
+From API 5.72 — check the published description first — the platform also counts **impressions**:
+a media loaded into a player, played or not. The Streamlike player sends them by itself; its play
+page announces the address in the `impression_url` meta. A player of your own sends one `GET` each
+time a **VOD** media becomes the one it shows — page load, playlist step, media switch — without
+waiting for playback. Never for a live, nor inside a streamout: both start on their own, so an
+impression there would only mirror the playback, and the Streamlike player sends none (API 5.74):
+
+```
+https://cdn.streamlike.com/i.k?m=MEDIA_ID&t=TIMESTAMP&p=myapp&u=USER
+```
+
+| Parameter | Required | Meaning |
+| --- | --- | --- |
+| `m` | yes | `media_id` |
+| `t` | recommended | Cache buster: a timestamp or random number |
+| `p` | no | Name of your player |
+| `u` | recommended | Viewer id, the same value as `u` on `o.k` |
+| `r` | no | URL of the embedding page, URL-encoded |
+
+One call per media shown, not per page: a playlist that loads three medias sends three. Do not send
+it again when the same media is replayed, or the ratio drops. And send `o.k` with `u` for the
+playbacks of that same player, or the ratio reads zero: only those are counted against impressions.
 
 ## Reporting engagement from your own player
 
@@ -102,12 +129,15 @@ The API exposes the same numbers as the console, all on a `{from}/{to}` date ran
 | `GET /analytics/engagement/{media_id}/connections/{from}/{to}` | Engagement timeline of one media |
 | `GET /analytics/engagement/{media_id}/qualities/{from}/{to}` | Engagement per video quality |
 | `GET /analytics/viewership/{from}/{to}` | Viewership |
-| `GET /analytics/medias/{from}/{to}` | Per-media table |
+| `GET /analytics/medias/{from}/{to}` | Per-media table, sortable on its figures (API 5.74); accepts `filter` (API 5.68), same syntax as `GET /medias` — `references/api.md` |
+| `GET /analytics/viewers/{from}/{to}` | Per-viewer table, one row per `user_token`, sorted and paged (API 5.74) |
 | `GET /analytics/userstats/{media_id}/{user_token}/{from}/{to}` | One viewer on one media |
 | `GET /analytics/languages/{media_id}/{playbacks\|listening\|transfer}/{from}/{to}` | Audience of a multi-track media per audio language (API 5.55) |
+| `GET /analytics/impressions/{from}/{to}` | Impressions of the player, its playbacks and the playback ratio (API 5.72) |
 | `GET /analytics/transfer`, `/storage`, `/encoding`, `/greenhousegas` `/{from}/{to}` | Consumption, including CO₂e |
 | `GET /analytics/catalogs/{from}/{to}` | Catalog duration held, as a daily snapshot |
 | `GET /analytics/company/billable` | Consumption since the start of the contractual term, against the allowance |
+| `GET /analytics/company/users/{from}/{to}` | Your back-office accounts and your catalogue by creator (API 5.74) |
 
 `/ws/media` also carries a cheap playback counter (`statistics.media_access`) if all you need is
 "how many views" next to a thumbnail.
@@ -160,7 +190,8 @@ const body = await res.json();
 const rows = Array.isArray(body) ? {} : body.data;   // [] means "nothing matched"
 ```
 
-Two endpoints are exempt and always answer a `data`: `/analytics/company/logins/{from}/{to}` and
+Three endpoints are exempt and always answer a `data`: `/analytics/company/logins/{from}/{to}`,
+`/analytics/company/users/{from}/{to}` and
 `/analytics/userstats/{media_id}/{user_token}/{from}/{to}`.
 
 **The keys are the values.** A report is an object keyed by encrypted company id, then by date,
@@ -180,8 +211,8 @@ encoding, storage, transfer and greenhouse gas puts the figure directly under th
 detailed answer has one entry per kind. The same reading code cannot serve both modes, and the
 `companies` metadata block is never sent alongside an aggregated report.
 
-**And `subtotal` is not offered everywhere.** Fifteen reports take an `aggregation` parameter at
-all, and all fifteen accept `total`. Only **four** also accept `subtotal`, the roll-up that keeps
+**And `subtotal` is not offered everywhere.** Sixteen reports take an `aggregation` parameter at
+all, and all sixteen accept `total`. Only **four** also accept `subtotal`, the roll-up that keeps
 one line per company:
 
 | Report | `total` | `subtotal` |
@@ -190,10 +221,11 @@ one line per company:
 | `GET /analytics/storage/{from}/{to}` | yes | yes |
 | `GET /analytics/transfer/{from}/{to}` | yes | yes |
 | `GET /analytics/greenhousegas/{from}/{to}` | yes | yes |
-| the eleven others | yes | **no** |
+| the twelve others | yes | **no** |
 
-The eleven that refuse it are `catalogs`, `encoding`, `engagement/{media_id}/qualities`, the three
-`playback/client/*`, the three `playback/location/*`, `playback/players` and `playback/referers`.
+The twelve that refuse it are `catalogs`, `encoding`, `engagement/{media_id}/qualities`, the three
+`playback/client/*`, the three `playback/location/*`, `playback/players`, `playback/referers` and
+`impressions`.
 Asking one of them for `subtotal` answers `400` with `INVALID_AGGREGATION`. Note that only the main
 `playback` report takes it — the narrower playback breakdowns beside it do not.
 
@@ -203,6 +235,149 @@ and the `company/*` reports — has no `aggregation` parameter at all.
 
 Since API 5.30 the published description of `aggregation` lists only the roll-ups the endpoint it
 sits on actually offers, so it is worth reading per endpoint rather than assumed.
+
+### A selection of media in one call
+
+From API 5.74, `media_ids` restricts a report to a list of media and sums them up server side.
+Do not loop over `media_id` and add the answers yourself: one call over the selection gives the
+same figures, and a distinct-viewer count (`viewer_count` in `viewership`) cannot be added up
+across calls anyway. It is accepted by `/analytics/playback` and its `players`, `referers`,
+`location/*`, `client/*` and `top/*` reports, by `transfer`, `viewership` and `live/streams`.
+
+```
+GET /analytics/playback/2026-09-01/2026-09-30?aggregation=total&media_ids[]=0123456789abcdef&media_ids[]=fedcba9876543210
+```
+
+- repeat the parameter, or send the ids comma-separated (`media_ids=a,b,c`), up to 10,000,
+- every id must exist and be visible to your key, and fall inside `company_id` when you pass it:
+  one bad id refuses the whole request with `400 INVALID_MEDIAIDS`, rather than answering a
+  partial total,
+- with `playlist_ids`, `tag_ids` or `keyword_ids`, only the media matching both are kept; a
+  selection that matches nothing answers `[]`, not the whole catalogue,
+- the per-company level stays: two media of two companies answer two keys under `data`, unless
+  you ask for `aggregation=total`.
+
+A list that does not fit in a URL goes in a body: the same reports answer to `POST` on the same
+URL, with the same parameters as a JSON object (`Content-Type: application/json`). That `POST`
+writes nothing and stays available during a maintenance window, like the `GET`. Do not repeat
+`media_ids[]` a thousand times in a query string or a form-encoded body: past 1,000 parameters the
+request answers `400 TOO_MANY_PARAMETERS`. A JSON array, or one comma-separated value, has no such
+limit.
+
+```js
+const res = await fetch(`${api}/analytics/viewership/2026-09-01/2026-09-30`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json', 'X-Streamlike-Authorization': auth },
+  body: JSON.stringify({ media_ids: selection }),   // an array of encrypted media ids
+});
+```
+
+API 5.74 also opens `playlist_ids`, `tag_ids` and `keyword_ids` on `viewership`, and makes
+`live/streams` apply them: they were accepted and ignored there, so a client that already sent one
+now gets fewer lives.
+
+### A table in one call
+
+From API 5.74, a dashboard that lists its catalogue or its audience fills the table with one call,
+sorted and paged by the API, instead of one call per row sorted on its side.
+
+**One row per media: `GET /analytics/medias/{from}/{to}`.** The listing of `GET /medias`, with
+its filters (`filter` included) and its `range`, each row carrying its figures over the period:
+`playbacks`, `viewed_duration`, `viewer_count`, `session_count`, the two averages,
+`unique_viewed_duration`, `replay_duration`, and the bytes served as `transit_total`,
+`transit_vod`, `transit_live`, `transit_hibernation`, `transit_downloaded` and
+`transit_other`. Unlike the other reports, **every row carries every column, 0 included**: a
+media nobody watched is a row of zeroes, not a missing key — except `avg_bitrate` and
+`sobriety_score`, which have no meaning without a second watched and are then absent.
+
+```
+GET /analytics/medias/2026-09-01/2026-09-30?sorts[]=playbacks|desc&sorts[]=name|asc&range=0-49&fields[]=id&fields[]=name&fields[]=playbacks&fields[]=viewed_duration
+```
+
+- these columns sort, and must come first: a catalogue field after them breaks the ties, one
+  written before them answers `400 INVALID_SORTS`,
+- such a sort reads the whole filtered catalogue, up to 10,000 media; beyond, `400
+  TOO_MANY_MEDIAS_TO_SORT` asks you to narrow the filter,
+- `fields[]` keeps to what you name, figures included.
+
+**One row per viewer: `GET /analytics/viewers/{from}/{to}`.** Every `user_token` that played or
+watched something over the period, with `playbacks`, `viewed_duration`, `session_count`,
+`average_duration_per_session`, `unique_viewed_duration` and `replay_duration`. It takes the
+filters of the playback reports (`media_id`, `media_ids`, the label filters, `company_id`), sorts
+with `sorts[]=column|direction` (by default `viewed_duration|desc`) and pages with `range`, in the
+envelope of a listing: `data`, `total_count`, `returned_count`, and the two `returned_*_index`
+when the page is not empty. It answers to `POST` with a JSON body too, like the reports above.
+
+A playback recorded without a user token belongs to no viewer: the rows add up to less than
+`/analytics/playback` when your integration does not always pass one.
+
+**Counting, without listing.** `/analytics/viewership` gives `viewer_count` and, from API 5.74,
+`media_count`: how many distinct media were watched over the period, under its filters. Do not
+download `/analytics/tokenstats` to count: it returns every media and token pair at once, which
+runs long on a large audience. It takes `media_ids` and the label filters since API 5.74, and the
+viewers of one media, page by page and with their figures, are `/analytics/viewers?media_id=…`
+— its rows with `playbacks` above 0 are exactly the tokens `tokenstats` lists for that media.
+
+**What the catalogue weighs.** From API 5.74 the weighting of `catalog_limit` (video in full,
+archived video × 0.2, audio × 0.1, archived audio × 0.02, a live not at all) is applied by the
+platform wherever you need it, so do not copy it into your code:
+
+- per media, the `billable_duration` and `billable_duration_archived` columns of
+  `/analytics/medias`, in weighted seconds; their difference is what archiving the media saves,
+  and both sort,
+- for the catalogue as it stands, `/analytics/company/stats` gives `billable_duration` and a
+  `repartition` by type then state, each with `count`, `duration` and `billable_duration`,
+- day by day, every entry of `/analytics/catalogs` carries `billable_duration`.
+
+Divide weighted seconds by 3600 to compare with `catalog_limit`. The allowance itself, with
+`term_begin` and `transit_limit`, stays on `/analytics/company/billable`, which needs the
+`ANALYTICS_BILLING` role.
+
+**How sober the delivery is.** `/analytics/sobriety/{from}/{to}` (API 5.74) divides the bytes of
+the streamed renditions (vod, live, and medias woken from hibernation) by the seconds watched: `avg_bitrate`, in kbit/s, and the
+`sobriety_score` it earns, A below 1,000 kbit/s, then a letter per 1,000 up to E from 4,000 — the
+`scale` comes with the answer, so do not hard-code it. It takes `media_id`, `media_ids`, the label
+filters and `company_id`; per media, the same figures are the `avg_bitrate` and `sobriety_score`
+columns of `/analytics/medias`. Before `modes_complete_from` (also in the answer) part of the vod
+bytes was filed under other, so a period reaching back before that day reads a bitrate too low.
+The period is not cut for you.
+
+**Adding up the transfer.** `/analytics/transfer` keeps its historical keys by default, where
+`__total_other__` repeats the sum of `other` and `__other__`. Ask `breakdown=normalized` and every
+bucket holds exactly `vod`, `live`, `hibernation`, `downloaded`, `other` and `total`, 0 included,
+which add up without counting anything twice.
+
+**How many finished a media.** With `media_id`, on a media that has a duration,
+`/analytics/viewership` gives `completed_viewer_count`, the viewers who saw more than 90 % of it
+at least once, and `completion_distribution`, the viewers by tenth of the media seen: key `"0"`
+for less than 10 %, key `"90"` for 90 % or more, all ten keys present. They agree with the
+`completion_rate` of `/analytics/userstats/{media_id}/*/{from}/{to}`, which you no longer need to
+download whole — on a media watched by thousands, it is the slow call. Both are absent without
+`media_id` and on a live.
+
+**Your users, without listing them.** `/analytics/company/users/{from}/{to}` (API 5.74, role
+`ANALYTICS_COMPANY_ABSTRACT`) replaces paging `/users` and the whole catalogue to draw a users
+tab. Under `users`: `total`, `enabled`, `disabled`, `new_in_period` and `new_in_previous_period`
+(the period of the same length just before), `active_in_period` (distinct users who signed in, where
+`/analytics/company/logins` counts sign-ins), `created` and `evolution` keyed by every UTC day of
+the period, 0 included, and `recency`, the accounts by how long ago they last signed in: `day`,
+`week`, `month`, `quarter`, `year`, `older`, `never`, which add up to `total`. Under `creators`:
+the medias by the user who created them, `count`, `duration` and `count_in_period`, most prolific
+first, plus `total`, `in_period` and `without_creator`. It covers your company only, never its
+subsidiaries. A deleted account is in no `users` figure but `active_in_period`, and its medias stay
+under `creators` with the name it last had.
+
+### Buckets and bounds
+
+The timed reports take `period` to set the width of their buckets, and with it the format of the
+keys: `2026-10-05` for `day` and `week` (the Monday), `2026-10` for `month`, `2026-Q4` for
+`quarter` (API 5.74), `2026` for `year`. A trend since a media was created is one call with the
+width you show, not a regrouping of days on your side.
+
+The engagement reports (`viewership` and the two `engagement/{media_id}/*`) answer
+`available_since` (API 5.74): the day of the oldest engagement figure the platform still holds. A
+period starting earlier reads nothing before it. Clamp your date pickers to that day rather than
+to a retention you wrote down: it is measured, so it follows the platform.
 
 ### One media, per audio language
 
@@ -231,6 +406,41 @@ Two things to build in:
 
 The transfer report reads the language from the file name pulled, so it also counts what a
 third-party player downloads; the two others count only what reported itself.
+
+### Impressions and the playback ratio
+
+From API 5.72, `GET /analytics/impressions/{from}/{to}` sets the impressions of the Streamlike
+player against the playbacks it started. Each bucket is an object, not a number:
+
+```json
+{"data": {"48c6eab371919246": {
+   "2026-10-12": {"impressions": 4, "playbacks": 2, "playback_ratio": 0.5},
+   "2026-10-13": {"impressions": 0, "playbacks": 3}
+ }},
+ "measured_from": "2026-10-12"}
+```
+
+`data.__all__.{date}` replaces the company level with `aggregation=total` (no `subtotal`). The
+filters are those of `GET /analytics/playback/{from}/{to}` plus `streamout_id`, without `source`
+nor `max_result`. CSV gives one row per figure: `company_id,date,indicator,value`.
+
+Four things to build in:
+
+- **`playbacks` here is not `GET /analytics/playback`.** Only playbacks of a player are counted:
+  YouTube, Dailymotion, podcast and RSS playbacks have no impression to be set against and are left
+  out, and so is an `o.k` sent without `u`. Do not mix the two figures in one table,
+- **`playback_ratio` is absent when the bucket has no impression** — not `0`, not `null`. It is
+  `playbacks / impressions` rounded to four decimals, a fraction (`0.5` is 50 percent), written
+  without decimals when whole (`1`), and it can exceed `1` when a viewer replays without reloading,
+- **`measured_from` is the day impressions started being recorded**, platform-wide. A bucket older
+  than it has playbacks and `impressions: 0`: show the ratio as unknown there, never as zero. It is
+  absent from CSV and from an empty `[]` answer,
+- **past days keep their totals, not their detail** (API 5.73). Every night the impressions of the
+  previous UTC day are folded into one count per company and media. The totals per day, company and
+  media do not move, but a folded day no longer knows the viewer, the streamout nor the hour: with
+  `user_token` or `streamout_id` it reads no impression, and with an hourly `period` all of them sit
+  at noon UTC. Filter impressions by viewer or streamout for the current day only; for anything
+  older, read the totals.
 
 ### Four figures that are not what they look like
 
@@ -282,6 +492,10 @@ that play under `utm_source=newsletter-october` instead of the origin. The refer
 recorded; only the grouping changes. Plays without `utm_source` keep the
 referrer. The value is trimmed and cut to 100 characters. Only `utm_source` is read: other UTM
 parameters (`utm_medium`, `utm_campaign`) are ignored.
+
+From API 5.74 a play whose page sent no referrer at all (a direct link, a browser or an app that
+strips it) is counted under `__unknown__`, in both modes, so the referrers add up to the play
+count; before, it was counted nowhere.
 
 In the API that grouping is a choice: pass `referrer_detail=page` to
 `GET /analytics/playback/referers/{from}/{to}`. The default, `referrer_detail=full`, returns each

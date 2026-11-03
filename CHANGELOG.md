@@ -7,6 +7,139 @@ patch for corrections that change nothing you would have written differently.
 The same version is published to both distributions — the Claude skill and the Gemini gem — from
 the same source.
 
+## 5.16.0 — 2026-11-03
+
+**Production caught up.** Release 6.2.1 of the platform, deployed on 3 November 2026, serves what the
+previous versions described ahead of it: API 5.68 to 5.75 (multi-criteria `filter` and `GET
+/medias/filterfields`, `media_ids` and the `POST` form of the analytics reports, impressions and
+the playback ratio, viewers, sobriety, company users, streamouts and secured media) and the
+player commands `subtitles`, `audio`, `interactions` and `chapters`. The last "not in production
+yet" caveat is gone from `references/player-embed.md`.
+
+**Pipelines holding one job type** (`references/api.md`, new section). `GET
+/pipelines?job_type=TYPE` keeps the pipelines with at least one job of that type, ANDed with the
+other filters. A misspelled type answers `200` with an empty list, not an error.
+
+**Media expiration alert** (`references/api.md`, new section). `media_expiration_alert_email` and
+`media_expiration_alert_days` (1 to 365) on `/companies/preferences` turn on a daily mail listing
+the online media whose visibility ends that many days later. They are set together and emptied
+together; when the alert is off, both keys are absent from `GET /companies/preferences`.
+
+## 5.15.0 — 2026-10-28
+
+**A streamout holds no secured media** (`references/api.md`, new "Streamouts and secured media").
+API 5.75: a media with a security of its own (IP or referrer attached to the media, token,
+password, token generation) is refused in a streamout's schedule, `400` with
+`INVALID_CONFIG_ITEMS_ITEM__MEDIA_SECURED` or `INVALID_CONFIG_ITEMS_ITEMS_ITEM__MEDIA_SECURED`
+inside a playlist item, and a media secured after being scheduled stops the broadcast (`404` on
+the player page, as for an offline streamout). The company's global IP or referrer rules do not
+apply inside a streamout: a media protected only by them is accepted and seen by every viewer of
+the streamout. `GET /streamouts` and `GET /streamouts/{streamout_id}` gain a `broadcast` object
+(`blocked`, `secured_media_ids`, `company_global_security`) that says whether the streamout is
+broadcast and why not. Minor because it is surface added: the bundle never said a secured media
+could be scheduled, and the error codes already existed. Not in production yet when this entry
+was written.
+
+## 5.14.0 — 2026-10-27
+
+**Impressions are counted for VOD only** (`references/analytics.md`, "Counting an impression from
+your own player"). API 5.74: the Streamlike player no longer sends `i.k` for a live nor on a
+streamout page, which both start on their own; a player of your own should do the same, and the
+`str` parameter of `i.k` is gone from the table. Minor because a player that sent impressions for
+lives or streamouts is written differently. Not in production yet when this entry was written.
+
+**A selection of media in one analytics call** (`references/analytics.md`, new "A selection of
+media in one call"). API 5.74: `media_ids` on `/analytics/playback` and its `players`,
+`referers`, `location/*`, `client/*` and `top/*` reports, on `transfer`, `viewership` and
+`live/streams` restricts the report to up to 10,000 media and sums them server side, so a
+dashboard no longer loops over `media_id`. One unknown or foreign id refuses the whole request
+(`400 INVALID_MEDIAIDS`); combined with `playlist_ids`, `tag_ids` or `keyword_ids` only the media
+matching both are kept. A list too long for a URL goes in a JSON `POST` body to the same URL,
+which reads only and stays open during maintenance; past 1,000 repeated parameters a query string
+answers `400 TOO_MANY_PARAMETERS`. API 5.74 also opens the three label filters on
+`viewership`, and makes `live/streams` apply them where it used to ignore them. Minor because it
+is surface added.
+
+**A table in one call** (`references/analytics.md`, new "A table in one call", endpoint table).
+API 5.74: `GET /analytics/medias` gives every row every figure over the period, 0 included,
+`playbacks` and the transit kinds among them, and sorts on them (they come first; beyond 10,000
+media, `400 TOO_MANY_MEDIAS_TO_SORT`). The new `GET /analytics/viewers` gives one row per
+`user_token`, sorted with `sorts[]` and paged with `range`; a playback without a user token
+belongs to no row. `/analytics/viewership` adds `media_count`, and `/analytics/tokenstats`
+takes `media_ids` and the label filters it used to refuse. With `media_id`, it also gives
+`completed_viewer_count` and `completion_distribution`, so counting who finished a media no longer
+means downloading `userstats` whole. The weighting of the allowance is applied by the platform:
+`billable_duration` and `billable_duration_archived` per media on `/analytics/medias`,
+`billable_duration` and a `repartition` by type and state on `/analytics/company/stats`, and
+`billable_duration` on every day of `/analytics/catalogs`. The new `/analytics/sobriety` gives the
+average streamed bitrate and its A–E score with its scale (also per media on
+`/analytics/medias`), and `/analytics/transfer` takes `breakdown=normalized` for buckets that add
+up without double counting. Referrers count the plays without one under `__unknown__`, the timed
+reports take `period=quarter`, the engagement reports give `available_since`, and the `filter`
+expression of `/medias` takes `played` (`references/api.md`). The new `/analytics/company/users`
+gives the back-office accounts (counters, creations by day, how long ago each last signed in) and
+the catalogue by creator, in place of listing `/users` and every media.
+
+## 5.13.0 — 2026-10-26
+
+**Past days of impressions keep their totals, not their detail** (`references/analytics.md`,
+"Impressions and the playback ratio", a fourth thing to build in). API 5.73: every night the
+impressions of the previous UTC day are folded into one count per company and media. Totals per
+day, company and media are unchanged; filtered on `user_token` or `streamout_id`, a folded day
+reads no impression, and with an hourly `period` its impressions sit at noon UTC. Minor because a
+per-viewer or per-streamout reading of impressions is written differently: for the current day
+only. Not in production yet when this entry was written.
+
+## 5.12.0 — 2026-10-22
+
+**Impressions and the playback ratio** (`references/analytics.md`, "Counting a playback from your
+own player", the new "Counting an impression from your own player" and "Impressions and the
+playback ratio"). API 5.72: `GET /analytics/impressions/{from}/{to}` answers, per bucket,
+`{"impressions", "playbacks", "playback_ratio"}`, with a root `measured_from`, the day impressions
+started being recorded. `playbacks` there only counts playbacks of a player, so it is not the
+figure of `GET /analytics/playback`; `playback_ratio` is absent when a bucket has no impression. A
+player of your own feeds it with the new `i.k` beacon, one call per media shown, and must send `u`
+on `o.k`, now documented with `str`, or its playbacks are left out of the ratio. The aggregation
+table counts the new report among those accepting `total` only. Minor because it is surface added:
+nothing you wrote before reads differently. Not in production yet when this entry was written.
+
+## 5.11.0 — 2026-10-21
+
+**When a key was last used** (`references/api.md`, "Authentication" and the read-only fields of
+"Restricting a key to a few roles"). API 5.70: `GET /me/keys`, `GET /me/keys/{id}` and the `200` of
+`PATCH /me/keys/{id}` return a read-only `last_used_at`, the last time the key, or a session token
+obtained with it, authenticated an API request or an FTP session, to the nearest five minutes. It is
+absent while the key has not been used, it is refused with `UNKNOWN_FIELDS` when sent back, and the
+response to a call shows the value from before that call. The rotation advice now says to read it
+before deleting the old key.
+
+## 5.10.0 — 2026-10-15
+
+**Filtering media on several criteria** (`references/api.md`, "Listing, paging and shaping" and
+the new "Filtering on several criteria"; `references/analytics.md`, endpoint table). API 5.68:
+`filter` on `GET /medias` and `GET /analytics/medias/{from}/{to}` takes an expression
+of comparisons joined by `and` / `or` with parentheses, which only narrows the list; `GET /lives`
+refuses it with `400 FILTER_NOT_SUPPORTED`; `GET /medias/filterfields` lists the fields, their
+operators and the endpoint giving their values. The page says
+the two things that bite: negations keep the media that lack the field (`countries` aside), and
+the parameter answers `503 FILTER_UNAVAILABLE` when the search index is down, where `search` comes
+back `degraded` and wider. API 5.68 also makes `GET /lives` apply the inherited listing parameters
+it used to ignore (`source.encoding_version` among them), which the "Which pipeline encoded a
+media" section already promised. Minor because it is surface added.
+
+**Pick the subtitles, the audio track, the interactions and the chapters from the page** (`references/player-embed.md`,
+"Controlling the player from the page"). New `postMessage` commands: `["subtitles","fr"]` shows a
+language — `fr-cc` for its closed captions — and `["subtitles",null]` hides them; `["audio","en"]`
+switches the audio track of a multi-audio media — `en-ad` for its audio description;
+`["interactions","fr"]` shows the interactions in a language, `["interactions",null]` hides them
+and `["interactions",true]` brings them back; `["chapters",true]` and `["chapters",false]` open
+and close the chapters panel, `["chapters","fr"]` opens it on a language. A language the media
+does not carry changes nothing, and `subtitle=0`, `interaction=0` or `chapter=0` in the player URL
+leave the matching command without effect.
+On a live, `subtitle=0` now hides the subtitles menu too: the player used to bring it back there.
+Send them after `sl-state` `ready`. They ship with a player release that is not in production yet.
+Minor because it is surface added.
+
 ## 5.9.0 — 2026-10-15
 
 **Everything the skill described ahead of production is now served there** (API 5.66, webservices

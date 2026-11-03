@@ -89,6 +89,18 @@ id:
 | `["seek",30.4]` | Jump to a position, in seconds |
 | `["speed",1.3]` | Playback rate — below 1 slows down, above 1 speeds up |
 | `["volume",0.5]` | Volume, 0 to 1 |
+| `["subtitles","fr"]` | Show the subtitles of a language: its code, or `fr-cc` for the closed captions. A language the media does not carry changes nothing |
+| `["subtitles",null]` | Hide the subtitles |
+| `["interactions","fr"]` | Show the interactions in a language the media carries. A language it does not carry changes nothing |
+| `["interactions",null]` / `["interactions",true]` | Hide the interactions / show them again, in the language they had |
+| `["chapters",true]` / `["chapters",false]` | Open / close the chapters panel. `["chapters","fr"]` opens it on that language. The player's icon column only shows once playback has started: a panel opened before that appears with it |
+| `["audio","en"]` | Switch to the audio track of a language: its code, or `en-ad` for the audio description. A language the media does not carry changes nothing |
+
+The subtitle and audio tracks are known once the media is loaded: send `subtitles` and `audio`
+after `sl-state` `ready`, not before. With `subtitle=0` in the player URL the `subtitles` command
+is refused: that parameter turns the subtitles off for the page, menu and command alike, on a
+live as on any other media — and `interaction=0` and `chapter=0` do the same for `interactions`
+and `chapters`.
 
 The player pushes back on the same channel. Each message is a JSON **string** — parse it — whose
 last item is the media id. `sl-progress` comes roughly every 250 ms while playing; `sl-state`
