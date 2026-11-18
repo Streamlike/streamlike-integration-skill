@@ -97,7 +97,7 @@ inside the reference files — is given from the root of the skill folder.
 | File | Contents |
 | --- | --- |
 | `references/webservices.md` | The 15 `/ws/*` endpoints, parameters, response shapes and absence rules, paging, XML, error behaviour |
-| `references/api.md` | REST API: authentication, keys restricted to a few roles, conventions, `fields`/`range`/`sorts`, errors, responses that surprise, multipart, audio tracks, audio versions of a video, synthetic-voice dubbing, encoding version, endpoint map |
+| `references/api.md` | REST API: authentication, keys restricted to a few roles, conventions, `fields`/`range`/`sorts`, errors, maintenance windows and the platform mode, responses that surprise, multipart, audio tracks, audio versions of a video, synthetic-voice dubbing, tokens, encoding version, endpoint map |
 | `references/player-embed.md` | Player URLs, the full parameter table, `postMessage` control, keyboard shortcuts, oEmbed |
 | `references/js-sdk.md` | `js-streamlike-sdk`: install, functions, playlist player, when it is the right tool |
 | `references/playback.md` | HLS/CMAF delivery, multiple audio tracks, subtitles, waveform peaks, native players, offline pitfalls |

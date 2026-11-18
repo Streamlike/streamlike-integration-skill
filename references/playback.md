@@ -128,6 +128,14 @@ JSON you can consume for your own rendering:
   about **100 seconds** behind the live edge. A live created with `live[dvr]=true` keeps about
   **45 minutes** instead — that is what the DVR is. The API default is `false` since API 5.30.
   The `live_dvr` embed parameter is accepted but the current player does not read it,
+- outside the player, a live's **HLS address** is `live.playback_url` of `GET /lives/{media_id}`:
+  `https://<cdn host>/<stream_name>/<secret>/master.m3u8`, for VLC, vMix or any HLS player. The
+  secret segment is random and **cannot be built from the stream name** the player link carries;
+  `https://<cdn host>/<stream_name>/master.m3u8` answers `404`. Fetch the address, never compose
+  it, and do not publish it: playbacks through it are missing from the analytics, while their
+  traffic is counted. `POST /lives/{media_id}/regenerate-playback-url` draws a new secret when the
+  address went further than intended — the previous one stops answering at once, players reading
+  it included. The listings (`GET /lives`, answered by the search index) leave the field out,
 - a **Streamout** is a scheduled broadcast — a playlist played on a timetable — embedded with
   `str_id=STREAMOUT_ID`. Several player parameters do not apply to it (the table in
   `references/player-embed.md` has a column for this),

@@ -217,7 +217,7 @@ curl -G "https://api.streamlike.com/medias" \
 - `GET /medias/filterfields` returns the fields a program can use, each with its `type`, the
   `operators` it takes, its `choices` when the list is closed and, for ids and codes, `values_from`:
   the endpoint that lists them (`/organization/tags`, `/resources/countries`…). Read it rather than
-  hard-coding the list; the "Filtering Medias" section of the API introduction says the same in
+  hard-coding the list; the "Filtering Media" section of the API introduction says the same in
   prose. Ids are the encrypted ones for tags,
   keywords and playlists, numeric for referrers and ips,
 - **negations keep the media that lack the field**: `tags != X` returns the media without any tag
@@ -248,7 +248,7 @@ curl -G "https://api.streamlike.com/medias" \
 | `401` | No or invalid token — or a write during a maintenance window (`API_OFFLINE`), see below |
 | `403` | Authenticated, but not allowed on this resource |
 | `404` | Unknown resource or endpoint — **also returned when you may not see it** |
-| `409` | Conflict, e.g. an encoding operation already running on that media |
+| `409` | Conflict, e.g. an encoding operation already running on that media, or a live scheduled while the platform is `quiet` (`PLATFORM_QUIET`, see below) |
 | `5xx` | Server side, retry later |
 
 Validation errors come back as machine-readable codes:
@@ -284,8 +284,23 @@ delete refuses a live too, with `MANDATORY_ROLE`. Stopping a live is yours
 
 ## Maintenance windows
 
-Streamlike closes the platform for planned maintenance, announced in advance. Since API 5.30 a
-window no longer stops everything:
+Streamlike closes the platform for planned maintenance, announced in advance. The platform is
+always in one of three modes, and **every API answer names the current one in the
+`X-Sl-Platform-Mode` header**: `open`, `quiet` or `frozen`. `X-Sl-Bo-Online` (`1` or `0`) is still
+sent beside it and reads `0` only in `frozen`; read the mode header when it is there, the older one
+when it is not.
+
+| Mode | What it means for an integration |
+| --- | --- |
+| `open` | Normal service |
+| `quiet` | Every call answers, reads and writes alike. What you launch is **accepted and held**: an encoding, a dubbing, a voice cloning or a transcription asked for in `quiet` starts by itself once the platform is `open` again, with nothing to resend. Scheduling or starting a live is refused: `POST /lives` and `PATCH /lives/{media_id}` answer `409` with `PLATFORM_QUIET`. A live already on air carries on. |
+| `frozen` | The maintenance window proper: reads answer, writes are refused |
+
+A maintenance usually goes `quiet`, then `frozen` for the minutes the database or the search
+index are being worked on, then `quiet` again, then `open`. A release that touches neither stays
+`quiet` throughout and is never `frozen`.
+
+**In `frozen`**, since API 5.30 a window no longer stops everything:
 
 - **reads keep answering.** `GET`, `HEAD` and `OPTIONS` stay reachable, along with the
   authentication endpoints and `POST /medias/{media_id}/token` — so playback of token-protected
@@ -294,8 +309,8 @@ window no longer stops everything:
   refused for the length of the window,
 - **`GET /tools/shorturl` is refused as well.** It answers to `GET`, but it mints the short link and
   its QR code, so it closes with the writes,
-- **the webservices (`/ws/*`) are not concerned at all.** A front end that reads its catalog through
-  them never notices a window.
+- **the webservices (`/ws/*`) and the player are not concerned at all**, in any mode. A front end
+  that reads its catalog through them never notices a window.
 
 Before API 5.30 every endpoint answered `401 API_OFFLINE` for the whole window, reads included.
 
@@ -308,6 +323,14 @@ maintenance".
 credentials are the problem and retrying with the same key will never work. Code that reads `401`
 as "my key died" will wake somebody up at every maintenance window, and code that retries every
 `401` will hammer the platform with a dead key.
+
+**Work in flight is held, not lost.** A job that ends while the platform is `frozen` — an encoding,
+a dubbing, a live recording — is reported to the platform once the window closes: the engines'
+own reports answer `503` with a `Retry-After` during the window and come back after it. On your
+side the job simply finishes later: `source.encoding_operation_running` stays true until then, the
+pipeline ends after the window, and the `callbacks` URL you gave with the source is called at that
+point. Keep polling, do not treat a job that outlives the announced window by a few minutes as
+stuck.
 
 **A listing read during a window can be short, and nothing in the answer says so.** Reindexing runs
 during maintenance, so a collection may return fewer items than it holds — with a `200`, a
@@ -385,8 +408,21 @@ The source file lives under `source[encode]`, not directly under `source`: the t
 handing over a file — `source[encode][media_file]` (the bytes, as above),
 `source[encode][media_url]` (a public URL Streamlike downloads from) and
 `source[encode][media_ftp_filename]` (a file already in your FTP watchfolder) — are exclusive,
-send exactly one. `source[complexity]`, below, sits one level up. A file sent as
+send exactly one. `source[complexity]`, below, sits one level up.
+
+A `media_url`, like every URL you hand over for us to fetch or call back (subtitles, chapters,
+attachments, `callbacks`), must be `http` or `https` on port 80 or 443, carry no `user:password@`,
+and resolve to a public address — on every redirect too. Anything else answers `400` with the
+field's code (`INVALID_SOURCE_ENCODE_URL`, `INVALID_SOURCE_ENCODE_CALLBACKS`…). A file sent as
 `source[media_file]` answers `400 INVALID_FORM` with `UNKNOWN_FIELDS`.
+
+**Every file field states its largest size** (API 5.78): `x-max-size`, in bytes, on the field in
+the OpenAPI description — a cover, a logo, an avatar, a skin, and the fields that take their file
+in a sub-field (`srt[file]`, `attachment[file]`, `track[file]`, `video[file]`, chapter `pictures`),
+which carry the size of that file. A file one byte larger answers `400 INVALID_FORM` with the
+field's code (`INVALID_SRT_FILE`, `INVALID_ATTACHMENT_FILE`…): check the size before sending. The
+media source has no fixed ceiling: it is your company's maximum upload size, set by Streamlike.
+Read these values from the OpenAPI file rather than copying them into your code: they can change.
 
 One quirk of the form layer: a form key must not start with a digit, or it is read as an array
 index. Order `source[plop]` before `source[360]` when both are present.
@@ -522,6 +558,10 @@ It does wait for another transcription, though: a media runs one speech-to-text 
 second one answers `400 INVALID_MEDIA_SPEECHTOTEXT_RUNNING` rather than billing the engine twice
 to overwrite its own subtitles.
 
+A transcription is debited in tokens, one estimate per language asked for, and a launch the
+balance does not cover answers `400 TOKENS_EXHAUSTED`. Asked for several media at once, the call
+launches the ones the balance covers and lists the others: see Tokens, below.
+
 **Several subtitle languages in one call** (API 5.45 and later). `speech_to_text[languages][]`
 takes a list of target languages in place of the single `speech_to_text[language]`, alongside
 `automatic_translation: true`: one subtitle set per language, produced one after the other, in the
@@ -625,10 +665,16 @@ What to build in:
   replaces the dubbing,
 - **one operation at a time**, as for the audio tracks: `409` while something runs on the media,
   and `blocked` on `GET /medias/{media_id}/audio-tracks` says what,
-- **the credit is counted in hours of media per language**: `GET /companies/dubbing/credit`
-  answers `subscribed_ms`, `used_ms`, `remaining_ms`. A track generated again counts again;
-  samples and re-said lines do not. A launch beyond what is left is refused with
-  `DUBBING_CREDIT_EXHAUSTED`,
+- **the dubbing is debited in tokens**, the prepaid credit of the company that the transcription
+  draws on too: `GET /companies/tokens/balance` answers `balance`, `low` and `threshold`, and
+  `GET /companies/tokens/estimate?service=tts&duration_ms=…&languages=…` says what a launch
+  reserves (the media duration per language, at the dubbing rate). A track generated again counts
+  again; samples and re-said lines do not. A launch the balance cannot cover is refused with
+  `400 TOKENS_EXHAUSTED` (`data`: `balance`, `needed`, `threshold`); the context carries the same
+  figures under `tokens`. From API 5.81, a launch that lost the balance to another one while it
+  was being written answers the same `400` and leaves its tracks `failed` with
+  `error: "TOKENS_EXHAUSTED"`: nothing was generated, launch those languages again once the
+  balance covers them,
 - **keeping a speaker's own voice** (`preserve_original: true` on its entry of `speakers`) needs a
   further option and `voice_consent: true` on the launch, the warrant that the voice may be
   cloned. The voice cast beside it stays required: it speaks when the media gives too little clean
@@ -638,6 +684,68 @@ What to build in:
 
 The company defaults — languages, voices, how much original sound stays under the voices — are the
 `dubbing_*` preferences of `POST`/`PATCH /companies/preferences`.
+
+## Tokens
+
+API 5.77 and later; the live estimate, the job restart and the per-media listing from 5.81; what
+a movement was for and the acts from 5.82. The
+automatic transcription, the synthetic-voice dubbing and the subtitles of a live are debited from
+the tokens of the company, a prepaid credit that Streamlike adds to. A launch reserves an
+estimate, the real duration settles it when the act ends, and an act that fails gives its estimate
+back.
+
+Ask before you launch, with `COMPANY_PREF` or `MEDIA_EDIT`:
+
+- `GET /companies/tokens/balance` answers `balance`, `low` and `threshold`,
+- `GET /companies/tokens/estimate?service=stt&duration_ms=…&languages=…` (`tts` for a dubbing)
+  answers `tokens`, `balance` and `enough`, the very test the launch makes. For a live to be
+  subtitled, `duration_ms` is its scheduled window, `languages` counts the language transcribed
+  plus each translation, and `overrun=1` adds the overrun the platform grants a live whose
+  `live.allow_overrun` is set.
+
+**No launch is accepted on a balance that does not cover its estimate.** The refusal is
+`400 TOKENS_EXHAUSTED`, with `balance`, `needed` and `threshold` in `data`, before anything runs:
+
+| Launch | What to expect |
+| --- | --- |
+| `POST /medias/{media_ids}/actions/speechtotext`, one media | `TOKENS_EXHAUSTED` as the answer |
+| the same call, several media | Each media is taken in its turn. The answer is `400 INVALID_GLOBAL_ACTION`, and its `data` lists `["TOKENS_EXHAUSTED"]` under each media the balance no longer covered, like any other media the action could not take. **The other media were launched**: read `data`, do not send the whole list again |
+| `POST /jobs/{job_id}/restart` on a transcription job | `TOKENS_EXHAUSTED` as the answer. The transcription runs again, so it is debited again |
+| `POST /medias/{media_id}/dubbings` | `TOKENS_EXHAUSTED` as the answer; see Synthetic-voice dubbing for the tracks a refused launch may leave `failed` |
+| `POST /lives`, `PATCH /lives/{media_id}` with `live.gladia_enabled` | `TOKENS_EXHAUSTED` as the answer, `data` also carrying `seconds` and `tracks`, what `needed` was measured on |
+
+The estimate of a live is its window (`live.ends_at` minus `live.begins_at`, or what is left of it
+once it has begun), plus the overrun when `live.allow_overrun` is set, once per subtitle language:
+`live.gladia_language` and each of `live.gladia_translation_languages`. It is checked when the
+live is saved and reserved when the live starts. A live saved on a sufficient balance is **not
+started** if the balance was spent in the meantime: it stays offline, its creator and the users
+holding `COMPANY_PREF` are notified, and it starts once the balance covers it, as long as its
+window is open. Ask for the estimate again before the window opens.
+
+Reading what was spent:
+
+- `GET /companies/tokens/movements` (`COMPANY_PREF`) is the ledger, newest first, paged with `page`
+  and `per_page`: `credit`, `reservation`, `settlement` and `release` lines, each with a signed
+  `tokens` and the `balance_after` it. A `credit` line can be negative: Streamlike took tokens
+  back to correct a credit. A live reads as a `reservation` when it starts and a `settlement`
+  when its session ends. From API 5.82 each line says what it was for in `subject`:
+  `{kind, media_id, media_name, languages}`, `kind` being `transcription`, `dubbing` or `live`,
+  the name a copy taken when the line was written, and `languages` the subtitle languages of a
+  transcription or of a live, or the voice of a dubbing. `subject` is `null` on a credit, and
+  may be on a line older than 5.82. The language of a plain transcription is detected by the
+  engine: `languages` is empty on its reservation, read it on the settlement,
+- `GET /companies/tokens/usage?period=month&from=…&to=…` (`COMPANY_PREF` or
+  `ANALYTICS_REPORTING`) answers one entry per period, empty ones included: `stt`, `tts`,
+  `credits` and `balance_end`. `credits` is net of the corrections, so read it as a signed figure.
+  The window holds 366 days with `period=day` and 600 months with `period=month`; a wider one
+  answers `400 WINDOW_TOO_WIDE`,
+- `GET /companies/tokens/acts?from=…&to=…` (API 5.82, `COMPANY_PREF` or `ANALYTICS_REPORTING`)
+  is the detail of `usage`: one entry per act and per credit of the window, newest first, paged
+  with `page` and `per_page`, each with `date`, `kind` (`transcription`, `dubbing`, `live` or
+  `credit`), `service`, a signed `tokens`, `media_id`, `media_name` and `languages`. Over the
+  same window the `tokens` of the entries add up to the figures of `usage`: it is the call that
+  says which media the tokens of a month went to. The window is the last twelve months by
+  default and holds 600 months; a wider one answers `400 WINDOW_TOO_WIDE`.
 
 ## Which pipeline encoded a media
 
@@ -786,8 +894,9 @@ older than 5.34 the catalogue answers neither option and no custom field sorts.
 API 5.35 and later. The speech-to-text engine is told about the words it would otherwise get
 wrong — product names, people, jargon — and they come from two places:
 
-- **the company dictionary**, the `speechtotext_words` preference: a list of `{"value": "…"}`
-  entries applied to every transcription of the account. `GET /companies/preferences` reads it
+- **the company dictionary**, the `speechtotext_words` preference: a list of entries applied to
+  every transcription of the account. An entry is `{"value": "…"}`, with three optional keys
+  described below: `pronunciations`, `intensity` and `variants`. `GET /companies/preferences` reads it
   with the rest of the preferences, and `POST /companies/preferences` rewrites the whole list —
   what you omit is removed,
 - **the words of one media**, `speech_to_text[words]` on
@@ -809,7 +918,90 @@ Two things to know from 5.35 on:
 - **the words of a media add to the dictionary, they no longer replace it.** The engine receives
   the dictionary first, then the words of the media it does not already carry, matched without
   regard to case. Before 5.35, one media word was enough to silence the whole dictionary for that
-  transcription; if your integration relied on that to bypass it, empty the preference instead.
+  transcription; if your integration relied on that to bypass it, use `company_dictionary` below.
+
+**One transcription can set the dictionary aside** (API 5.83 and later). Beside its `words`,
+`speech_to_text` takes two optional keys, on `POST /medias/{media_ids}/actions/speechtotext` and
+at upload (`source[encode][speech_to_text]`):
+
+- `company_dictionary`, a boolean, `true` when left out: `false` transcribes with the `words` of
+  the request alone, the company dictionary is not sent,
+- `company_dictionary_excluded`, a list of strings, 500 at most: words of the company dictionary
+  left out of this transcription, with their variants, compared without regard to case. A word
+  the dictionary does not carry is ignored; one left out here but given in `words` applies as
+  given there.
+
+The dictionary itself never changes. A long dictionary that does not fit a media makes the engine
+hear words that were not said: keep only what the media needs. A value of the wrong type answers
+`400 INVALID_FORM` with `INVALID_SPEECHTOTEXT_COMPANY_DICTIONARY` or
+`INVALID_SPEECHTOTEXT_COMPANY_DICTIONARY_EXCLUDED`.
+
+```bash
+curl -X POST "https://api.streamlike.com/medias/MEDIA_ID/actions/speechtotext" \
+  -H 'X-Streamlike-Authorization: streamlikeAuth token="YOUR_KEY"' \
+  -H "Content-Type: application/json" \
+  -d '{"speech_to_text":{"type":"subtitle","company_dictionary_excluded":["Novalys"],"words":[{"value":"Jalios"}]}}'
+```
+
+**What an entry carries.** Beside `value`, an entry of either list takes:
+
+- `pronunciations` and `intensity` (API 5.76 and later): the word written as it sounds, as a list,
+  and how strongly the engine leans towards the word, from 0 to 1 (0.4 applies when the key is
+  left out),
+- `variants` (API 5.82 and later): the misspellings the engine produces for the word, each
+  rewritten to the word wherever it appears in the transcript — `"Novalice"` and `"Nova lys"` for
+  `"Novalys"`. The vocabulary only leans the recognition towards a word; a variant is replaced for
+  certain, so use it when the vocabulary alone does not fix the spelling. A variant is compared
+  without regard to case and written with the case of the word; one that differs from the word by
+  its case alone forces that case. 20 variants at most per word, 2 to 100 characters each; blanks
+  and duplicates are dropped.
+
+```json
+{"value": "Novalys", "pronunciations": ["nova liss"], "intensity": 0.6, "variants": ["Novalice", "Nova lys"]}
+```
+
+The keys an entry does not set are absent from the answers, never empty. Four rules from 5.82 on:
+
+- **a variant serves one word only.** In the company dictionary, a variant that is the spelling of
+  another word, or already a variant of another word, refuses the write: `400 INVALID_FORM` with
+  `INVALID_SPEECHTOTEXT_WORD_VARIANTS`, the code that also answers a list out of bounds. Among the
+  words of a media, such a variant is set aside without an error and the company dictionary wins.
+  A media word the dictionary already carries only brings the variants the dictionary did not
+  have,
+- **`POST /companies/preferences/speechtotext-words` takes `variants` with its `value`.** On a new
+  word they are stored with it. On a word the dictionary already carries, the variants it did not
+  have are added to its entry, and its pronunciations and intensity are left alone: this is how a
+  correction is taught to the next transcriptions without rewriting the list. A variant that
+  contradicts the dictionary, or a word that would end up with more than 20 variants, refuses the
+  whole call and nothing is written,
+- **the company dictionary holds 500 words at most.** A write that takes `speechtotext_words`
+  above 500 words answers `400 INVALID_FORM` with `INVALID_SPEECHTOTEXT_WORDS_LIMIT`, on
+  `POST /companies/preferences` as on `POST /companies/preferences/speechtotext-words` for a word
+  a full dictionary does not carry. Adding variants to a word it already carries still works, and
+  removing words through `POST /companies/preferences` makes room. A dictionary that was already
+  longer keeps being read and applied whole, and can be saved again unchanged or shortened: only a
+  longer list is refused. The words of a media are not counted. A sync job that pushes a glossary
+  into the dictionary must handle that answer instead of retrying,
+- **an entry is written whole.** On `POST /companies/preferences` and in the words of a media, an
+  entry sent without `pronunciations`, `intensity` or `variants` is stored without them. Read the
+  list, change it, and send every entry back with the keys you read on it: code that rebuilds the
+  list from the values alone erases the rest.
+
+**The subtitles of a live take plain words** (API 5.82 and later). A live subtitled in real time
+(`live.gladia_enabled`) is told about words in two ways, both read when the live starts — a change
+made while it runs applies to the next start:
+
+- `live.gladia_custom_vocabulary`, a boolean: when set, the values of the company dictionary are
+  given to the live transcription. Only the values: pronunciations, intensities and variants do
+  not apply to a live,
+- `live.gladia_words`, on `POST /lives` and `PATCH /lives/{media_id}`: the words of this live
+  alone — speakers, product names, the jargon of the event —, as a list of `{"value": "…"}`
+  entries and nothing else. 200 entries at most, each value 2 to 100 characters; blanks and
+  duplicates, whatever the case, are dropped, and anything else answers `400 INVALID_FORM` with
+  `INVALID_LIVE_GLADIA_WORDS`. Send the whole list on every write: what you omit is removed. They
+  are sent whatever `live.gladia_custom_vocabulary` says, on top of the dictionary when it is on.
+  `GET /lives/{media_id}` and `GET /lives` answer the key when the live has words; it is absent
+  otherwise.
 
 **A media without speech is not a failure** (API 5.38 and later). When the engine finds no speech
 in the audio — music, silence — the `speechtotext` job ends `done` without a track, and
@@ -855,7 +1047,57 @@ curl -X PATCH "https://api.streamlike.com/companies/preferences" \
   address that is not one `INVALID_MEDIA_EXPIRATION_ALERT_EMAIL`,
 - the mail lists only online media that have a visibility end date, and each one on a single
   day: the day its end falls exactly `media_expiration_alert_days` days later. Nothing
-  is sent on a day with nothing to report.
+  is sent on a day with nothing to report,
+- the same address and delay carry the notices of the media life cycle rules, below: turning
+  the alert off stops every rule.
+
+## Media life cycle rules
+
+API 5.78 and later.
+`media_lifecycle_rules`, a `GET`/`POST`/`PATCH /companies/preferences` field, takes media
+offline, back online, to the archive or to the bin on their own, once they have been in a state
+for long enough. It is a list of up to 20 rules, each one `{state, event, delay, unit, action}`:
+
+```bash
+curl -X PATCH "https://api.streamlike.com/companies/preferences" \
+     -H 'X-Streamlike-Authorization: streamlikeAuth token="YOUR_KEY"' \
+     -H 'Content-Type: application/json' \
+     -d '{"media_lifecycle_rules":[
+           {"state":"online","event":"last_playback_at","delay":1,"unit":"year","action":"offline"},
+           {"state":"offline","event":"updated_at","delay":6,"unit":"month","action":"delete"}]}'
+```
+
+| Key | Values |
+| --- | --- |
+| `state` | `online`, `offline`, `archived` (cold storage option), `hibernated` (hibernation option) |
+| `event` | `created_at`, `updated_at` (any change, the platform's included), `last_playback_at` (last playback in a player; a media never played counts from its creation) |
+| `delay`, `unit` | 1 to 3650 `day`, 1 to 120 `month`, 1 to 10 `year` |
+| `action` | `online`, `offline`, `archive` (cold storage option), `delete` |
+
+- **only some combinations exist**: `online` to `offline`, `archive` or `delete`; `offline` to
+  `online`, `archive` or `delete`; `archived` or `hibernated` to `delete`,
+- **the list is replaced as a whole.** Send every rule on every write: a rule you leave out is
+  removed, and `[]` removes them all. A write that does not name the field keeps the rules, so
+  the other preferences can still be patched alone,
+- **nothing acts without the expiration alert.** Every day, each rule first mails the list of the
+  media it is about to act on to `media_expiration_alert_email`,
+  `media_expiration_alert_days` days ahead, then acts on the day only on the media the rule
+  still selects then: a media played since, under a `last_playback_at` rule, drops out. Removing
+  a rule, or turning the alert off, cancels what it had announced. With the alert off, no rule
+  acts. A notice that could not be mailed is not recorded and nothing acts on it; it is tried
+  again the next day. A media handed over to another company leaves the rule,
+- videos and audios only, lives are never touched. `delete` is final, as `DELETE
+  /medias/{media_id}` is. Each action shows in the back-office actions log under the name
+  Streamlike,
+- **the preferences role is enough.** Writing the rules, those that delete included, takes
+  `COMPANY_PREF`, as any write to the preferences does: a key that may edit the preferences may
+  set a rule that deletes media for good,
+- **off reads as absent.** A company without rules gets no `media_lifecycle_rules` key from
+  `GET /companies/preferences`,
+- a refused list answers `400 INVALID_FORM` with `INVALID_MEDIA_LIFECYCLE_RULES` (unknown
+  value), `INVALID_MEDIA_LIFECYCLE_RULE_COMBINATION`, `INVALID_MEDIA_LIFECYCLE_RULE_DELAY`,
+  `INVALID_MEDIA_LIFECYCLE_RULE_OPTION` (an option your company does not have),
+  `DUPLICATE_MEDIA_LIFECYCLE_RULE` or `TOO_MANY_MEDIA_LIFECYCLE_RULES`.
 
 ## Streamouts and secured media
 
@@ -904,7 +1146,7 @@ player that shows nothing.
 | --- | --- |
 | `Authentication` | Session and single-use tokens |
 | `Me` | Current user, API keys and the roles they are restricted to, notifications, preferences |
-| `Medias` | Medias and lives: CRUD, attachments, subtitles, chapters, interactions, audio tracks, synthetic-voice dubbing, covers, SCORM, social push, playback tokens |
+| `Medias` | Media and lives: CRUD, attachments, subtitles, chapters, interactions, audio tracks, synthetic-voice dubbing, covers, SCORM, social push, playback tokens |
 | `Medias - Actions` | Bulk operations on a list of media ids: delete, duplicate, tag, keyword, playlist, visibility, security, re-encode, speech-to-text, audio versions |
 | `Medias - Misc` | Creators, languages, custom field and custom action templates |
 | `Organization` | Playlists, tags, keywords, views |
@@ -915,7 +1157,7 @@ player that shows nothing.
 | `Streamout` | Scheduled broadcast channels |
 | `Streamlink` | Short URLs bound to a media |
 | `Social` | Linked YouTube / Dailymotion accounts |
-| `Identity` | Users, groups, company preferences, dubbing voices and credit |
+| `Identity` | Users, groups, company preferences, dubbing voices, tokens |
 | `Hibernation` | Archived media and their actions |
 | `Helpdesk`, `Resources`, `Ftp`, `Tools` | Tickets, reference lists, FTP files, short URLs |
 
@@ -934,6 +1176,8 @@ player that shows nothing.
 | Add an audio track | `POST /medias/{media_id}/audio-tracks/{language_id}` |
 | Replace the video, keeping the tracks | `POST /medias/{media_id}/video/replace` |
 | Dub a media into another language | `GET /medias/{media_id}/dubbing/context`, then `POST /medias/{media_id}/dubbings` |
+| Know whether a transcription, a dubbing or the subtitles of a live will be accepted | `GET /companies/tokens/estimate` |
+| Say which media the tokens went to | `GET /companies/tokens/acts` |
 | Read audience | `GET /analytics/playback/{from}/{to}`, `GET /analytics/engagement/{media_id}/connections/{from}/{to}` |
 
 ## SDKs

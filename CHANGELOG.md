@@ -7,6 +7,146 @@ patch for corrections that change nothing you would have written differently.
 The same version is published to both distributions — the Claude skill and the Gemini gem — from
 the same source.
 
+## 5.21.0 — 2026-11-17
+
+**One transcription can set the company dictionary aside, whole or word by word**
+(`references/api.md`, The transcription dictionary). API 5.83.
+
+- `speech_to_text[company_dictionary]`, a boolean, `true` when left out: `false` transcribes with
+  the words of the request alone, on `POST /medias/{media_ids}/actions/speechtotext` and at upload,
+- `speech_to_text[company_dictionary_excluded][]`: words of the company dictionary left out of this
+  transcription, with their variants, compared without regard to case, 500 at most. The dictionary
+  itself does not change,
+- a value of the wrong type answers `INVALID_SPEECHTOTEXT_COMPANY_DICTIONARY` or
+  `INVALID_SPEECHTOTEXT_COMPANY_DICTIONARY_EXCLUDED`. Without them, the whole dictionary applies,
+  as before.
+
+## 5.20.0 — 2026-11-16
+
+**The transcription dictionary rewrites misspellings, and a live takes its own words**
+(`references/api.md`, The transcription dictionary). API 5.82.
+
+- an entry of the dictionary, or of the words of a media, takes an optional `variants` list: the
+  misspellings rewritten to the word wherever they appear in the transcript. 20 at most per word,
+  2 to 100 characters each. A variant serves one word only: the company dictionary refuses a
+  contradiction with `INVALID_SPEECHTOTEXT_WORD_VARIANTS`, the words of a media set it aside,
+- `POST /companies/preferences/speechtotext-words` takes `variants` with its `value`, and adds
+  them to a word the dictionary already carries: a correction is taught without rewriting the
+  list,
+- the company dictionary holds 500 words at most: a write that takes it above answers
+  `INVALID_SPEECHTOTEXT_WORDS_LIMIT`, on the whole-list write as on the add call. A longer
+  dictionary stays readable and can be saved again as long as it does not grow,
+- **an entry is written whole**: one sent without `pronunciations`, `intensity` or `variants` is
+  stored without them. Code that reads the list and posts it back must carry every key it read,
+- the section now describes `pronunciations` and `intensity` (API 5.76), which it left out,
+- `live.gladia_words` on `POST /lives` and `PATCH /lives/{media_id}`: the words of one live, told
+  to its real-time subtitles, as a list of `{"value": "…"}` entries, 200 at most
+  (`INVALID_LIVE_GLADIA_WORDS`). `live.gladia_custom_vocabulary` gives the live the values of the
+  company dictionary.
+
+Minor because surface is added: a key on the dictionary entries, a parameter, a field of the live,
+and a refusal to handle on the dictionary writes.
+Not in production yet when this entry was written.
+
+**Tokens: what a movement was for, and the usage report act by act** (`references/api.md`,
+Tokens, Reading what was spent; Endpoint map). API 5.82:
+
+- every line of `GET /companies/tokens/movements` carries `subject`,
+  `{kind, media_id, media_name, languages}`: the transcription, the dubbing or the live the line
+  belongs to, its media and the languages it writes; `null` on a credit. `reference` named the
+  act, `subject` says which media it ran on,
+- new `GET /companies/tokens/acts` (`COMPANY_PREF` or `ANALYTICS_REPORTING`): one entry per act
+  and per credit over a window, paged, whose `tokens` add up to the figures of
+  `GET /companies/tokens/usage` over the same window.
+
+Minor because surface is added: an endpoint, and a field on the movements. Not in production yet
+when this entry was written.
+
+## 5.19.0 — 2026-11-16
+
+**Tokens: what is debited, where a launch is refused, how to ask first** (`references/api.md`, new
+Tokens section after Synthetic-voice dubbing, Audio tracks and video replacement, Synthetic-voice
+dubbing, Endpoint map; `cookbook/server-ingest.md`, Follow the encoding). API 5.81. The automatic
+transcription, the synthetic-voice dubbing and the subtitles of a live draw on the tokens of the
+company, and no launch is accepted on a balance that does not cover its estimate:
+`400 TOKENS_EXHAUSTED`, with `balance`, `needed` and `threshold`. What 5.81 changes:
+
+- a live to be subtitled is held to its estimate — its window, plus the overrun when
+  `live.allow_overrun` is set, once per subtitle language — on `POST /lives` and
+  `PATCH /lives/{media_id}`, where only an empty balance refused it. `overrun=1` on
+  `GET /companies/tokens/estimate` gives that estimate beforehand. A live saved on a sufficient
+  balance is not started if the balance was spent in the meantime,
+- `POST /jobs/{job_id}/restart` on a transcription job debits it again and can answer
+  `TOKENS_EXHAUSTED`: a retry loop on failed jobs must not include that answer,
+- `POST /medias/{media_ids}/actions/speechtotext` for several media launches the ones the balance
+  covers and lists the others under `400 INVALID_GLOBAL_ACTION`,
+- a dubbing launch that lost the balance to another one leaves its tracks `failed` with
+  `error: "TOKENS_EXHAUSTED"`,
+- in `GET /companies/tokens/movements` a `credit` line can be negative, and `credits` of
+  `GET /companies/tokens/usage` is net of those corrections. `usage` opens to
+  `ANALYTICS_REPORTING` and answers `400 WINDOW_TOO_WIDE` past 366 days or 600 months.
+
+Minor because surface is added: a parameter, and refusals to handle on calls that had none. Not in
+production yet when this entry was written.
+
+## 5.18.1 — 2026-11-16
+
+**`related` ranks on its keywords again, then on the playlists** (`references/webservices.md`,
+`related`). Webservices 5.27. The results were served in id order whatever `relation_weight` said; they are ranked
+on the keywords shared again, and among the media sharing as many, those found in more of the
+source media's playlists come first. Patch: the order you were promised, nothing to change on
+your side. Not in production yet when this entry was written.
+
+## 5.18.0 — 2026-11-06
+
+**The platform mode, on every answer** (`references/api.md`, Maintenance windows; `cookbook/server-ingest.md`,
+Housekeeping). Every API answer carries `X-Sl-Platform-Mode`: `open`, `quiet` or `frozen`;
+`X-Sl-Bo-Online` stays beside it. In `quiet` every call answers, and what you launch (encoding,
+dubbing, voice cloning, transcription) is held and starts by itself once the platform is `open`
+again, while scheduling or starting a live answers `409 PLATFORM_QUIET`; `frozen` is the
+maintenance window as before, reads open and writes `401 API_OFFLINE`. A job that ends during a
+`frozen` window is recorded once it closes, your `callbacks` URL with it. Minor because a status
+and a header are added. Not in production yet when this entry was written.
+
+## 5.17.0 — 2026-11-04
+
+**Largest size of every uploaded file** (`references/api.md`, Uploading files). API 5.78:
+`x-max-size`, in bytes, on every file field of the OpenAPI description, the fields that take their
+file in a sub-field (`srt[file]`, `attachment[file]`, `track[file]`, `video[file]`, chapter
+`pictures`) included; one byte more answers `400` with the field's code. The media source keeps the
+company's own ceiling. Not in production yet when this entry was written.
+
+**Media life cycle rules** (`references/api.md`, new section after Media expiration alert). API
+5.78: `media_lifecycle_rules` on `GET`/`POST`/`PATCH /companies/preferences`, up to 20 rules
+`{state, event, delay, unit, action}` that take media offline, online, to the archive or delete
+them once an event is old enough. The list is replaced as a whole on every write that names it;
+nothing acts without the expiration alert address and delay, which carry the notice; a notice
+that could not be mailed is not recorded and is tried again the next day; `COMPANY_PREF`, the role
+of the endpoint, is enough to write every rule, a delete rule included. Not in
+production yet when this entry was written.
+
+**The HLS address of a live carries a secret** (`references/playback.md`, Live and Streamout).
+API 5.78: `live.playback_url` of `GET /lives/{media_id}` gives the whole manifest address,
+`https://<cdn host>/<stream_name>/<secret>/master.m3u8`; the address built from the stream name
+alone answers `404` once the release is live, so a VLC or vMix setup made that way must take the
+new one. `POST /lives/{media_id}/regenerate-playback-url` draws a new secret and kills the
+previous address at once. Not in production yet when this entry was written.
+
+**Live sessions: the latest ones, or all of them** (`references/analytics.md`, new section). API
+5.78: `max_result` (1 to 9999) on `GET`/`POST /analytics/live/streams/{from}/{to}` keeps only the
+most recent sessions of the period, counted across all the live media and still grouped by media;
+any other value answers `400 INVALID_FORM` with `INVALID_MAXRESULT`. Without it the report returns
+every session of the period, the CSV included, where it used to stop silently at 9999, and the
+sessions of a media come oldest first. Minor because it is surface added. Not in production yet
+when this entry was written.
+
+**Dividing transfer by watch time or impressions** (`references/analytics.md`, new section). The
+bytes served for recorded media reach `/analytics/transfer` up to about 18 hours late, while watch
+time and impressions are current to within the hour: end the period of every report at the same
+bound, 18 hours before now or earlier, and on a past day at midnight UTC. The section gives the
+average bitrate formula, `(vod + live) × 8 / viewed_duration`, and recalls what the playback ratio
+counts.
+
 ## 5.16.0 — 2026-11-03
 
 **Production caught up.** Release 6.2.1 of the platform, deployed on 3 November 2026, serves what the
@@ -439,7 +579,7 @@ that edits streamouts across companies on an `_ALL` token, it stops working with
 nothing else does.
 
 **Streamout payloads gain `company.id` and `company.name`.** They are what lets a client tell the
-streamouts it may write from the ones it may only read, before it sends the write. Medias have
+streamouts it may write from the ones it may only read, before it sends the write. Media have
 carried the same pair all along. Both role descriptions were also fixed in the published spec:
 `STREAMOUT_ALL` and `MEDIA_ALL` promised "edit/view all", and neither has ever granted the edit
 outside its own company.

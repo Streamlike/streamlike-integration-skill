@@ -24,7 +24,7 @@ pass to the repeatable filters below.
 | `playlists` | Every online playlist of a company | no |
 | `playlist` | The media of one or several playlists, paginated and filtered | no |
 | `media` | Everything about one media | no |
-| `related` | Medias sharing keywords with a given media | no |
+| `related` | Media sharing keywords with a given media | no |
 | `languages` | Languages present in the online catalog | no |
 | `countries` | Countries attached to the online catalog | no |
 | `nowplaying` | How many viewers are watching a media right now | no |
@@ -385,9 +385,10 @@ Three details that catch people:
 GET /ws/related?media_id=MEDIA_ID&pagesize=6
 ```
 
-Medias sharing at least one keyword with the source media, each carrying the same media block as
+Media sharing at least one keyword with the source media, each carrying the same media block as
 `/ws/media` plus `metadata.relation_weight` — an integer counting the keywords in common, which is
-what the results are ranked on. Empty when the media carries no keywords, a common surprise on
+what the results are ranked on. Among results sharing as many keywords, those found in more of the
+source media's playlists come first. Empty when the media carries no keywords, a common surprise on
 catalogs where keywords were never filled in. `view_id` restricts the pool.
 
 Three things this service does that the others do not:

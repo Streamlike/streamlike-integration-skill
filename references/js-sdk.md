@@ -102,7 +102,7 @@ The controller exposes `play`, `pause`, `seek`, `next`, `previous`, `playIndex`,
 
 Behaviour worth knowing before you fight it:
 
-- **paging is automatic.** Medias load `pageSize` at a time; nearing the end of the loaded set
+- **paging is automatic.** Media load `pageSize` at a time; nearing the end of the loaded set
   fetches the next page, a "load more" button appears while media remain, and the counter reads
   `20 / 330`. `getTotal()` is the real size,
 - **restricted media are handled.** Token-protected media are hidden by default and removed from

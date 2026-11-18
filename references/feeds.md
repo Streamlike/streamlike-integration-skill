@@ -138,8 +138,8 @@ code. `Streamlink` endpoints (`/streamlink/urls`, `POST /streamlink/urls/media/{
 and manage short URLs bound to a media, when you need one that keeps working as the media changes.
 
 It answers to `GET`, but it writes: it mints the link and the code. So it is the one read-looking
-call that a maintenance window refuses, with `401 API_OFFLINE` — see the maintenance windows
-section of `references/api.md`. Mint your links ahead of time rather than on the page that displays
+call that a `frozen` maintenance window refuses, with `401 API_OFFLINE` — see the maintenance
+windows section of `references/api.md`. Mint your links ahead of time rather than on the page that displays
 them.
 
 ## SCORM

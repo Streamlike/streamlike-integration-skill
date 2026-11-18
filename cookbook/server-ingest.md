@@ -38,7 +38,10 @@ yet.
   finished. Poll that rather than guessing a delay,
 - `POST /jobs/{job_id}/restart` re-runs a failed job, `POST /medias/{media_ids}/actions/reencode`
   re-encodes from the source — but not a multi-track media, which answers
-  `INVALID_MEDIA_IS_MULTIPLE_AUDIO`: its tracks are managed one by one.
+  `INVALID_MEDIA_IS_MULTIPLE_AUDIO`: its tracks are managed one by one. Restarting a
+  transcription job debits its tokens again, and answers `400 TOKENS_EXHAUSTED` when the balance
+  does not cover it (API 5.81 and later): do not retry that one in a loop, see Tokens in
+  `references/api.md`.
 
 Front ends should never show a media that is still encoding: filter on `encoded`, or keep the media
 `offline` until you have seen it finish.
@@ -77,11 +80,14 @@ States are `online`, `offline` and `archived`. Bulk changes go through
 
 - **retries**: a `5xx` deserves a retry with backoff; a `400` never does — read
   `data.errors` and fix the payload,
-- **maintenance windows**: an ingest pipeline is all writes, so a planned window stops it whole.
-  Every call here answers `401` with `API_OFFLINE` and writes nothing — hold the queue and drain it
-  when the window closes, rather than failing the batch. Reads keep working throughout, so a
-  polling loop watching `source.encoding_operation_running` carries on. Match on `API_OFFLINE`:
-  it is the only `401` that a retry ever fixes,
+- **maintenance windows**: every answer carries `X-Sl-Platform-Mode`. In `quiet` the pipeline
+  runs as usual, the encodings it launches are simply held and start by themselves once the
+  platform is `open` again. In `frozen` an ingest pipeline is all writes, so the window stops it
+  whole: every call here answers `401` with `API_OFFLINE` and writes nothing — hold the queue and
+  drain it when the window closes, rather than failing the batch. Reads keep working throughout, so
+  a polling loop watching `source.encoding_operation_running` carries on. Match on `API_OFFLINE`:
+  it is the only `401` that a retry ever fixes. The maintenance windows section of
+  `references/api.md` has the three modes,
 - **conflicts**: `409` means an operation is already running on that media (a re-encode, an audio
   track update). Wait and retry — `source.encoding_operation_running` on `GET /medias/{media_id}`
   tells you when it is over, which beats retrying on a timer. The one write that never answers

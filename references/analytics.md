@@ -47,7 +47,7 @@ https://cdn.streamlike.com/i.k?m=MEDIA_ID&t=TIMESTAMP&p=myapp&u=USER
 | `u` | recommended | Viewer id, the same value as `u` on `o.k` |
 | `r` | no | URL of the embedding page, URL-encoded |
 
-One call per media shown, not per page: a playlist that loads three medias sends three. Do not send
+One call per media shown, not per page: a playlist that loads three media sends three. Do not send
 it again when the same media is replayed, or the ratio drops. And send `o.k` with `u` for the
 playbacks of that same player, or the ratio reads zero: only those are counted against impressions.
 
@@ -334,7 +334,7 @@ Divide weighted seconds by 3600 to compare with `catalog_limit`. The allowance i
 `ANALYTICS_BILLING` role.
 
 **How sober the delivery is.** `/analytics/sobriety/{from}/{to}` (API 5.74) divides the bytes of
-the streamed renditions (vod, live, and medias woken from hibernation) by the seconds watched: `avg_bitrate`, in kbit/s, and the
+the streamed renditions (vod, live, and media woken from hibernation) by the seconds watched: `avg_bitrate`, in kbit/s, and the
 `sobriety_score` it earns, A below 1,000 kbit/s, then a letter per 1,000 up to E from 4,000 — the
 `scale` comes with the answer, so do not hard-code it. It takes `media_id`, `media_ids`, the label
 filters and `company_id`; per media, the same figures are the `avg_bitrate` and `sobriety_score`
@@ -362,10 +362,28 @@ tab. Under `users`: `total`, `enabled`, `disabled`, `new_in_period` and `new_in_
 `/analytics/company/logins` counts sign-ins), `created` and `evolution` keyed by every UTC day of
 the period, 0 included, and `recency`, the accounts by how long ago they last signed in: `day`,
 `week`, `month`, `quarter`, `year`, `older`, `never`, which add up to `total`. Under `creators`:
-the medias by the user who created them, `count`, `duration` and `count_in_period`, most prolific
+the media by the user who created them, `count`, `duration` and `count_in_period`, most prolific
 first, plus `total`, `in_period` and `without_creator`. It covers your company only, never its
-subsidiaries. A deleted account is in no `users` figure but `active_in_period`, and its medias stay
+subsidiaries. A deleted account is in no `users` figure but `active_in_period`, and its media stay
 under `creators` with the name it last had.
+
+### Live sessions: the latest ones, or all of them
+
+`GET /analytics/live/streams/{from}/{to}` lists the broadcasting sessions of each live media,
+grouped under its encrypted id, oldest first within a media. From API 5.78, `max_result` (1 to
+9999) keeps only the most recent sessions of the period, counted across all the live media, still
+grouped by media:
+
+```
+GET /analytics/live/streams/2026-10-01/2026-10-31?max_result=10
+```
+
+- a screen that shows the last sessions passes it, instead of loading the whole history and
+  cutting on its side,
+- an export that wants every session leaves it out: without it, every session of the period comes
+  back, the CSV included (before API 5.78 the report stopped silently at 9999),
+- any other value answers `400 INVALID_FORM` with `INVALID_MAXRESULT`,
+- the media are not ordered under `data`: iterate and read each list, do not rely on key order.
 
 ### Buckets and bounds
 
@@ -441,6 +459,26 @@ Four things to build in:
   `user_token` or `streamout_id` it reads no impression, and with an hourly `period` all of them sit
   at noon UTC. Filter impressions by viewer or streamout for the current day only; for anything
   older, read the totals.
+
+### Dividing transfer by watch time or impressions
+
+An average bitrate or a volume per playback divides `GET /analytics/transfer/{from}/{to}` by
+`GET /analytics/viewership/{from}/{to}` (or by the playbacks of `/analytics/impressions`). The
+sources do not arrive at the same pace:
+
+- **the bytes served for recorded media reach `transfer` up to about 18 hours late**, while watch
+  time, playbacks and impressions are current to within the hour. Over a period ending less than 18
+  hours ago the ratio reads too low. End the period of every report at the same bound, 18 hours
+  before now or earlier — `{to}` takes a date-time such as `2026-11-04T14:00:00Z`, inclusive,
+- **on a past day, cut at midnight UTC**, not inside the day: its impressions are folded at noon
+  (see above), so a bound before noon drops all of them and one after keeps all of them, against
+  part of the day's playbacks,
+- **average bitrate = (`vod` + `live` bytes) × 8 / `viewed_duration`**, in bits per second, over
+  the same period and filters: the quality the players actually pulled, weighted by watch time. It
+  can differ from the bitrates the media were encoded at, and reads too low over a period starting
+  before `modes_complete_from` (below),
+- **playback ratio = playbacks / impressions**, both from `/analytics/impressions`: our player only,
+  podcast, RSS and YouTube playbacks are not counted, and it is unknown before `measured_from`.
 
 ### Four figures that are not what they look like
 
